@@ -1,0 +1,150 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version (e.g., v0.1.0 or v0.1.0-alpha.1)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    outputs:
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - name: Validate version format
+        id: version
+        run: |
+          VERSION="${{ inputs.version }}"
+          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-.+)?$ ]]; then
+            echo "::error::Version must match vX.Y.Z or vX.Y.Z-suffix format (got: $VERSION)"
+            exit 1
+          fi
+          if [[ "$VERSION" == *-* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Check tag does not exist
+        run: |
+          if git rev-parse "${{ inputs.version }}" >/dev/null 2>&1; then
+            echo "::error::Tag ${{ inputs.version }} already exists"
+            exit 1
+          fi
+
+      - name: Verify changelog entry
+        if: steps.version.outputs.prerelease == 'false'
+        run: |
+          if ! grep -q "^## ${{ inputs.version }}" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no entry for ${{ inputs.version }}"
+            exit 1
+          fi
+
+      - name: Create and push tag
+        run: |
+          git tag "${{ inputs.version }}"
+          git push origin "${{ inputs.version }}"
+
+      - name: Delete tag on failure
+        if: failure()
+        run: git push origin --delete "${{ inputs.version }}" 2>/dev/null || true
+
+  build:
+    needs: validate
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            binary: erinra
+            archive: erinra-${{ inputs.version }}-x86_64-linux.tar.gz
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            binary: erinra
+            archive: erinra-${{ inputs.version }}-aarch64-darwin.tar.gz
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            binary: erinra.exe
+            archive: erinra-${{ inputs.version }}-x86_64-windows.zip
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - uses: jdx/mise-action@v2
+
+      - name: Install cargo-about
+        run: cargo install cargo-about
+
+      - name: CI pipeline
+        run: mise run ci
+        env:
+          CARGO_BUILD_TARGET: ${{ matrix.target }}
+
+      - name: Package (unix)
+        if: runner.os != 'Windows'
+        run: |
+          cd target/${{ matrix.target }}/release
+          tar czf ../../../${{ matrix.archive }} ${{ matrix.binary }}
+
+      - name: Package (windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "target/${{ matrix.target }}/release/${{ matrix.binary }}" -DestinationPath "${{ matrix.archive }}"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.target }}
+          path: ${{ matrix.archive }}
+
+  release:
+    needs: [validate, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Extract release notes
+        run: |
+          if [[ "${{ needs.validate.outputs.prerelease }}" == "true" ]]; then
+            echo "Pre-release build from $(git rev-parse --short HEAD)." > release-notes.md
+          else
+            awk '/^## ${{ inputs.version }}/{found=1; next} /^## /{if(found) exit} found' CHANGELOG.md > release-notes.md
+            if [[ ! -s release-notes.md ]]; then
+              echo "::error::Release notes for ${{ inputs.version }} are empty"
+              exit 1
+            fi
+          fi
+
+      - uses: actions/download-artifact@v8
+        with:
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ inputs.version }}" \
+            --title "${{ inputs.version }}" \
+            --notes-file release-notes.md \
+            ${{ needs.validate.outputs.prerelease == 'true' && '--prerelease' || '' }} \
+            erinra-${{ inputs.version }}-*.tar.gz \
+            erinra-${{ inputs.version }}-*.zip

@@ -1,0 +1,23 @@
+# Auto detect text files and normalise line endings
+* text=auto
+
+# Rust
+*.rs text diff=rust
+Cargo.toml text
+Cargo.lock text -diff
+
+# Documentation
+*.md text diff=markdown
+
+# Config
+*.toml text
+*.json text
+*.yml text
+*.yaml text
+
+# Shell
+*.sh text eol=lf
+
+# Binary
+*.gz binary
+*.jsonl.gz binary

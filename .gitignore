@@ -1,0 +1,38 @@
+# Build
+/target/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Erinra data
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+
+# fastembed model cache
+.fastembed_cache/
+
+# Issue tracking (separate repo)
+.nibs/
+
+.architecture-improvements/
+.code-reviews/
+/.grill-me/
+/.claude/worktrees/
+
+# Web frontend
+/web/node_modules/
+/web/build/
+/web/.svelte-kit/
+
+# Added by cargo
+
+/target

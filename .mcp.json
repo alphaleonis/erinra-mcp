@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "erinra": {
+      "type": "stdio",
+      "command": "erinra",
+      "args": [
+        "serve"
+      ],
+      "env": {}
+    }
+  }
+}

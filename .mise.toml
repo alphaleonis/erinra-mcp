@@ -1,0 +1,99 @@
+[tools]
+node = "22"
+
+# ── Dependencies ─────────────────────────────────────────────────────
+
+[tasks.install]
+description = "Install npm dependencies"
+run = "cd web && npm install"
+
+[tasks."install:ci"]
+description = "Clean install npm dependencies from lockfile (for CI/release)"
+run = "cd web && npm ci"
+
+# ── Build ────────────────────────────────────────────────────────────
+
+[tasks."build:web"]
+description = "Build the frontend SPA"
+depends = ["install"]
+run = "cd web && npm run build"
+
+[tasks."build:rust"]
+description = "Build the Rust binary (debug)"
+run = "cargo build"
+
+[tasks."build:rust:release"]
+description = "Build the Rust binary (release). Set CARGO_BUILD_TARGET env var for cross-compilation."
+run = "cargo build --release"
+
+[tasks.build]
+description = "Build everything (debug)"
+depends = ["build:web"]
+run = "cargo build"
+
+[tasks."build:release"]
+description = "Build everything for distribution (frontend + licenses + release binary)"
+depends = ["install:ci"]
+run = ["cd web && npm run build", "bash scripts/gen-licenses.sh", "cargo build --release"]
+
+# ── CI ───────────────────────────────────────────────────────────────
+
+[tasks.ci]
+description = "Full CI pipeline: install, check, test, build release"
+run = [
+  "cd web && npm ci",
+  "cargo fmt -- --check",
+  "cargo clippy -- -D warnings",
+  "cd web && npm run check",
+  "cd web && npm run build",
+  "cargo test",
+  "cd web && npx vitest run",
+  "bash scripts/gen-licenses.sh",
+  "cargo build --release",
+]
+
+# ── Check & Lint ─────────────────────────────────────────────────────
+
+[tasks.check]
+description = "Type-check and lint both Rust and frontend"
+run = ["cargo fmt -- --check", "cargo clippy -- -D warnings", "cd web && npm run check"]
+
+[tasks.fmt]
+description = "Auto-format Rust code"
+run = "cargo fmt"
+
+# ── Test ─────────────────────────────────────────────────────────────
+
+[tasks.test]
+description = "Run fast tests (Rust + frontend unit)"
+run = ["cargo test", "cd web && npx vitest run"]
+
+[tasks."test:e2e"]
+description = "Run Playwright e2e tests (requires built frontend)"
+depends = ["build:web"]
+run = "cd web && npx playwright test"
+
+[tasks."test:all"]
+description = "Run all tests (unit + e2e)"
+depends = ["test", "test:e2e"]
+
+# ── Utilities ────────────────────────────────────────────────────────
+
+[tasks.licenses]
+description = "Regenerate THIRD_PARTY_LICENSES.txt (run after dependency changes, then commit)"
+depends = ["install"]
+run = "bash scripts/gen-licenses.sh"
+
+[tasks.dev]
+description = "Build frontend and run dashboard in debug mode"
+depends = ["build:web"]
+run = "cargo run -- dash --no-open"
+
+[tasks.run]
+description = "Build everything and run with given arguments"
+depends = ["build:web"]
+run = "cargo run -- {{arg(rest=true)}}"
+
+[tasks.clean]
+description = "Clean all build artifacts"
+run = ["cargo clean", "rm -rf web/build web/.svelte-kit"]

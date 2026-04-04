@@ -1,0 +1,87 @@
+[package]
+name = "erinra"
+version = "0.1.0"
+edition = "2024"
+description = "Memory MCP server for LLM coding assistants"
+license = "MIT"
+repository = "https://github.com/alphaleonis/erinra-mcp"
+
+[dependencies]
+# MCP server
+rmcp = { version = "1.3", features = ["server", "transport-io", "macros", "transport-streamable-http-server"] }
+schemars = "1"
+
+# SQLite + vector search
+rusqlite = { version = "0.39", features = ["bundled"] }
+sqlite-vec = "=0.1.9"
+
+# Embeddings
+fastembed = "5.12"
+
+# Core
+uuid = { version = "1", features = ["v4", "serde"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+tokio-util = "0.7"
+tracing = "0.1"
+tracing-appender = "0.2"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# CLI
+clap = { version = "4", features = ["derive", "env", "wrap_help"] }
+dirs = "6"
+
+# Sync
+flate2 = "1"
+gethostname = "1"
+whoami = "2"
+notify = "8"
+
+# Web dashboard
+axum = "0.8"
+form_urlencoded = "1"
+fs2 = "0.4"
+tower-http = { version = "0.6", features = ["fs", "set-header"] }
+include_dir = "0.7"
+mime_guess = "2"
+open = "5"
+
+# Auth token generation
+rand = "0.10"
+
+# HTTP client for relay mode
+reqwest = { version = "0.13", default-features = false, features = ["rustls"] }
+
+# Process inspection
+sysinfo = { version = "0.38", default-features = false, features = ["system"] }
+
+# Error handling
+anyhow = "1"
+thiserror = "2"
+toml = "1"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/erinra-v{ version }-{ target-arch }-{ target-os }{ archive-suffix }"
+pkg-fmt = "tgz"
+
+[package.metadata.binstall.overrides.x86_64-pc-windows-msvc]
+pkg-fmt = "zip"
+
+[features]
+test-utils = []
+
+[profile.release]
+lto = true
+strip = true
+opt-level = "z"
+codegen-units = 1
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { version = "1", features = ["test-util"] }
+tower = { version = "0.5", features = ["util"] }
+erinra = { path = ".", features = ["test-utils"] }

@@ -1,0 +1,2556 @@
+THIRD-PARTY LICENSES
+
+Erinra includes code from the following third-party projects.
+Full license texts are available at the URLs listed below.
+
+----------------------------------------------------------------------
+hf-hub 0.4.3
+Apache License 2.0
+https://github.com/huggingface/hf-hub
+
+----------------------------------------------------------------------
+moxcms 0.8.1
+Apache License 2.0
+https://github.com/awxkee/moxcms.git
+Copyright [Radzivon Bartoshyk]
+----------------------------------------------------------------------
+pxfm 0.1.28
+Apache License 2.0
+https://github.com/awxkee/pxfm
+Copyright [Radzivon Bartoshyk]
+----------------------------------------------------------------------
+lzma-rust2 0.15.7
+Apache License 2.0
+https://github.com/hasenbanck/lzma-rust2/
+
+----------------------------------------------------------------------
+esaxx-rs 0.1.10
+Apache License 2.0
+https://github.com/Narsil/esaxx-rs
+Copyright [Nicolas Patry <patry.nicolas@protonmail.com>]
+----------------------------------------------------------------------
+fastembed 5.13.0
+Apache License 2.0
+https://github.com/Anush008/fastembed-rs
+Copyright [Anush008 <anushshetty90@gmail.com>, Josh Niemelä <josh@jniemela.dk>, GrisiaEvy <a115020115@gmail.com>, George MacKerron <georgemackerron@neon.tech>, Timon Vonk <mail@timonv.nl>, Luya Wang <luya.wang@qq.com>, Tri <tri@triandco.com>, Denny Wong <denwong47@hotmail.com>, Alex Rozgo <alex.rozgo@gmail.com>]
+----------------------------------------------------------------------
+imgref 1.12.0
+Apache License 2.0
+https://github.com/kornelski/imgref
+Copyright [Kornel Lesiński <kornel@geekhood.net>]
+----------------------------------------------------------------------
+safetensors 0.7.0
+Apache License 2.0
+https://github.com/huggingface/safetensors
+
+----------------------------------------------------------------------
+spm_precompiled 0.1.4
+Apache License 2.0
+https://github.com/huggingface/spm_precompiled
+Copyright [Nicolas Patry <patry.nicolas@protonmail.com>]
+----------------------------------------------------------------------
+tokenizers 0.22.2
+Apache License 2.0
+https://github.com/huggingface/tokenizers
+Copyright [Anthony MOI <m.anthony.moi@gmail.com>, Nicolas Patry <patry.nicolas@protonmail.com>]
+----------------------------------------------------------------------
+openssl 0.10.76
+Apache License 2.0
+https://github.com/rust-openssl/rust-openssl
+Copyright [Steven Fackler <sfackler@gmail.com>]
+----------------------------------------------------------------------
+gethostname 1.1.0
+Apache License 2.0
+https://codeberg.org/swsnr/gethostname.rs.git
+Copyright [Sebastian Wiesner <sebastian@swsnr.de>]
+----------------------------------------------------------------------
+ring 0.17.14
+Apache License 2.0
+https://github.com/briansmith/ring
+
+----------------------------------------------------------------------
+aws-lc-sys 0.39.1
+Apache License 2.0
+https://github.com/aws/aws-lc-rs
+Copyright [AWS-LC]
+----------------------------------------------------------------------
+dunce 1.0.5
+Apache License 2.0
+https://gitlab.com/kornelski/dunce
+Copyright [Kornel <kornel@geekhood.net>]
+----------------------------------------------------------------------
+rmcp-macros 1.3.0
+Apache License 2.0
+https://github.com/modelcontextprotocol/rust-sdk/
+
+----------------------------------------------------------------------
+rmcp 1.3.0
+Apache License 2.0
+https://github.com/modelcontextprotocol/rust-sdk/
+
+----------------------------------------------------------------------
+ryu 1.0.23
+Apache License 2.0
+https://github.com/dtolnay/ryu
+Copyright [David Tolnay <dtolnay@gmail.com>]
+----------------------------------------------------------------------
+sync_wrapper 1.0.2
+Apache License 2.0
+https://github.com/Actyx/sync_wrapper
+Copyright [Actyx AG <developer@actyx.io>]
+----------------------------------------------------------------------
+v_frame 0.3.9
+BSD 2-Clause "Simplified" License
+https://github.com/rust-av/v_frame
+Copyright [Luca Barbato <lu_zero@gentoo.org>]
+----------------------------------------------------------------------
+rav1e 0.8.1
+BSD 2-Clause "Simplified" License
+https://github.com/xiph/rav1e/
+Copyright [Thomas Daede <tdaede@xiph.org>]
+----------------------------------------------------------------------
+av1-grain 0.2.5
+BSD 2-Clause "Simplified" License
+https://github.com/rust-av/av1-grain
+
+----------------------------------------------------------------------
+matchit 0.8.4
+BSD 3-Clause "New" or "Revised" License
+https://github.com/ibraheemdev/matchit
+Copyright [Ibraheem Ahmed <ibraheem@ibraheem.ca>]
+----------------------------------------------------------------------
+avif-serialize 0.8.8
+BSD 3-Clause "New" or "Revised" License
+https://github.com/kornelski/avif-serialize
+Copyright [Kornel Lesiński <kornel@geekhood.net>]
+----------------------------------------------------------------------
+ravif 0.13.0
+BSD 3-Clause "New" or "Revised" License
+https://github.com/kornelski/cavif-rs
+Copyright [Kornel Lesiński <kornel@geekhood.net>]
+----------------------------------------------------------------------
+subtle 2.6.1
+BSD 3-Clause "New" or "Revised" License
+https://github.com/dalek-cryptography/subtle
+Copyright [Isis Lovecruft <isis@patternsinthevoid.net>, Henry de Valence <hdevalence@hdevalence.ca>]
+----------------------------------------------------------------------
+lebe 0.5.3
+BSD 3-Clause "New" or "Revised" License
+https://github.com/johannesvollmer/lebe
+Copyright [johannesvollmer <contact@johannesvollmer.com>]
+----------------------------------------------------------------------
+aws-lc-sys 0.39.1
+BSD 3-Clause "New" or "Revised" License
+https://github.com/aws/aws-lc-rs
+Copyright [AWS-LC]
+----------------------------------------------------------------------
+exr 1.74.0
+BSD 3-Clause "New" or "Revised" License
+https://github.com/johannesvollmer/exrs
+Copyright [johannesvollmer <contact@johannesvollmer.com>]
+----------------------------------------------------------------------
+notify 8.2.0
+Creative Commons Zero v1.0 Universal
+https://github.com/notify-rs/notify.git
+Copyright [Félix Saparelli <me@passcod.name>, Daniel Faust <hessijames@gmail.com>, Aron Heinecke <Ox0p54r36@t-online.de>]
+----------------------------------------------------------------------
+webpki-root-certs 1.0.6
+Community Data License Agreement Permissive 2.0
+https://github.com/rustls/webpki-roots
+
+----------------------------------------------------------------------
+webpki-roots 0.26.11
+Community Data License Agreement Permissive 2.0
+https://github.com/rustls/webpki-roots
+
+----------------------------------------------------------------------
+webpki-roots 1.0.6
+Community Data License Agreement Permissive 2.0
+https://github.com/rustls/webpki-roots
+
+----------------------------------------------------------------------
+untrusted 0.9.0
+ISC License
+https://github.com/briansmith/untrusted
+Copyright [Brian Smith <brian@briansmith.org>]
+----------------------------------------------------------------------
+inotify-sys 0.1.5
+ISC License
+https://github.com/hannobraun/inotify-sys
+Copyright [Hanno Braun <hb@hannobraun.de>]
+----------------------------------------------------------------------
+inotify 0.11.1
+ISC License
+https://github.com/hannobraun/inotify
+Copyright [Hanno Braun <mail@hannobraun.de>, Félix Saparelli <me@passcod.name>, Cristian Kubis <cristian.kubis@tsunix.de>, Frank Denis <github@pureftpd.org>]
+----------------------------------------------------------------------
+ring 0.17.14
+ISC License
+https://github.com/briansmith/ring
+
+----------------------------------------------------------------------
+rustls-webpki 0.103.10
+ISC License
+https://github.com/rustls/webpki
+
+----------------------------------------------------------------------
+hmac-sha256 1.1.14
+ISC License
+https://github.com/jedisct1/rust-hmac-sha256
+Copyright [Frank Denis <github@pureftpd.org>]
+----------------------------------------------------------------------
+aws-lc-rs 1.16.2
+ISC License
+https://github.com/aws/aws-lc-rs
+Copyright [AWS-LibCrypto]
+----------------------------------------------------------------------
+aws-lc-sys 0.39.1
+ISC License
+https://github.com/aws/aws-lc-rs
+Copyright [AWS-LC]
+----------------------------------------------------------------------
+onig_sys 69.9.1
+MIT License
+https://github.com/iwillspeak/rust-onig
+Copyright [Will Speak <will@willspeak.me>, Ivan Ivashchenko <defuz@me.com>]
+----------------------------------------------------------------------
+onig 6.5.1
+MIT License
+https://github.com/iwillspeak/rust-onig
+Copyright [Will Speak <will@willspeak.me>, Ivan Ivashchenko <defuz@me.com>]
+----------------------------------------------------------------------
+lazy_static 1.5.0
+MIT License
+https://github.com/rust-lang-nursery/lazy-static.rs
+Copyright [Marvin Löbel <loebel.marvin@gmail.com>]
+----------------------------------------------------------------------
+libfuzzer-sys 0.4.12
+MIT License
+https://github.com/rust-fuzz/libfuzzer
+Copyright [The rust-fuzz Project Developers]
+----------------------------------------------------------------------
+rayon-core 1.13.0
+MIT License
+https://github.com/rayon-rs/rayon
+
+----------------------------------------------------------------------
+rayon 1.11.0
+MIT License
+https://github.com/rayon-rs/rayon
+
+----------------------------------------------------------------------
+core-foundation-sys 0.8.7
+MIT License
+https://github.com/servo/core-foundation-rs
+Copyright [The Servo Project Developers]
+----------------------------------------------------------------------
+core-foundation 0.10.1
+MIT License
+https://github.com/servo/core-foundation-rs
+Copyright [The Servo Project Developers]
+----------------------------------------------------------------------
+form_urlencoded 1.2.2
+MIT License
+https://github.com/servo/rust-url
+Copyright [The rust-url developers]
+----------------------------------------------------------------------
+idna 1.1.0
+MIT License
+https://github.com/servo/rust-url/
+Copyright [The rust-url developers]
+----------------------------------------------------------------------
+percent-encoding 2.3.2
+MIT License
+https://github.com/servo/rust-url/
+Copyright [The rust-url developers]
+----------------------------------------------------------------------
+url 2.5.8
+MIT License
+https://github.com/servo/rust-url
+Copyright [The rust-url developers]
+----------------------------------------------------------------------
+cc 1.2.58
+MIT License
+https://github.com/rust-lang/cc-rs
+Copyright [Alex Crichton <alex@alexcrichton.com>]
+----------------------------------------------------------------------
+cfg-if 1.0.4
+MIT License
+https://github.com/rust-lang/cfg-if
+Copyright [Alex Crichton <alex@alexcrichton.com>]
+----------------------------------------------------------------------
+cmake 0.1.58
+MIT License
+https://github.com/rust-lang/cmake-rs
+Copyright [Alex Crichton <alex@alexcrichton.com>]
+----------------------------------------------------------------------
+find-msvc-tools 0.1.9
+MIT License
+https://github.com/rust-lang/cc-rs
+
+----------------------------------------------------------------------
+jobserver 0.1.34
+MIT License
+https://github.com/rust-lang/jobserver-rs
+Copyright [Alex Crichton <alex@alexcrichton.com>]
+----------------------------------------------------------------------
+js-sys 0.3.94
+MIT License
+https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/js-sys
+Copyright [The wasm-bindgen Developers]
+----------------------------------------------------------------------
+openssl-probe 0.2.1
+MIT License
+https://github.com/rustls/openssl-probe
+Copyright [Alex Crichton <alex@alexcrichton.com>]
+----------------------------------------------------------------------
+openssl-sys 0.9.112
+MIT License
+https://github.com/rust-openssl/rust-openssl
+Copyright [Alex Crichton <alex@alexcrichton.com>, Steven Fackler <sfackler@gmail.com>]
+----------------------------------------------------------------------
+pkg-config 0.3.32
+MIT License
+https://github.com/rust-lang/pkg-config-rs
+Copyright [Alex Crichton <alex@alexcrichton.com>]
+----------------------------------------------------------------------
+socket2 0.6.3
+MIT License
+https://github.com/rust-lang/socket2
+Copyright [Alex Crichton <alex@alexcrichton.com>, Thomas de Zeeuw <thomasdezeeuw@gmail.com>]
+----------------------------------------------------------------------
+wasm-bindgen-futures 0.4.67
+MIT License
+https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/futures
+Copyright [The wasm-bindgen Developers]
+----------------------------------------------------------------------
+wasm-bindgen-macro-support 0.2.117
+MIT License
+https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/macro-support
+Copyright [The wasm-bindgen Developers]
+----------------------------------------------------------------------
+wasm-bindgen-macro 0.2.117
+MIT License
+https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/macro
+Copyright [The wasm-bindgen Developers]
+----------------------------------------------------------------------
+wasm-bindgen-shared 0.2.117
+MIT License
+https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/shared
+Copyright [The wasm-bindgen Developers]
+----------------------------------------------------------------------
+wasm-bindgen 0.2.117
+MIT License
+https://github.com/wasm-bindgen/wasm-bindgen
+Copyright [The wasm-bindgen Developers]
+----------------------------------------------------------------------
+web-sys 0.3.94
+MIT License
+https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/web-sys
+Copyright [The wasm-bindgen Developers]
+----------------------------------------------------------------------
+mio 1.2.0
+MIT License
+https://github.com/tokio-rs/mio
+Copyright [Carl Lerche <me@carllerche.com>, Thomas de Zeeuw <thomasdezeeuw@gmail.com>, Tokio Contributors <team@tokio.rs>]
+----------------------------------------------------------------------
+errno 0.3.14
+MIT License
+https://github.com/lambda-fairy/rust-errno
+Copyright [Chris Wong <lambda.fairy@gmail.com>, Dan Gohman <dev@sunfishcode.online>]
+----------------------------------------------------------------------
+mime 0.3.17
+MIT License
+https://github.com/hyperium/mime
+Copyright [Sean McArthur <sean@seanmonstar.com>]
+----------------------------------------------------------------------
+base64ct 1.8.3
+MIT License
+https://github.com/RustCrypto/formats
+Copyright [RustCrypto Developers]
+----------------------------------------------------------------------
+bitflags 1.3.2
+MIT License
+https://github.com/bitflags/bitflags
+Copyright [The Rust Project Developers]
+----------------------------------------------------------------------
+bitflags 2.11.0
+MIT License
+https://github.com/bitflags/bitflags
+Copyright [The Rust Project Developers]
+----------------------------------------------------------------------
+log 0.4.29
+MIT License
+https://github.com/rust-lang/log
+Copyright [The Rust Project Developers]
+----------------------------------------------------------------------
+num-bigint 0.4.6
+MIT License
+https://github.com/rust-num/num-bigint
+Copyright [The Rust Project Developers]
+----------------------------------------------------------------------
+num-complex 0.4.6
+MIT License
+https://github.com/rust-num/num-complex
+Copyright [The Rust Project Developers]
+----------------------------------------------------------------------
+num-derive 0.4.2
+MIT License
+https://github.com/rust-num/num-derive
+Copyright [The Rust Project Developers]
+----------------------------------------------------------------------
+num-integer 0.1.46
+MIT License
+https://github.com/rust-num/num-integer
+Copyright [The Rust Project Developers]
+----------------------------------------------------------------------
+num-rational 0.4.2
+MIT License
+https://github.com/rust-num/num-rational
+Copyright [The Rust Project Developers]
+----------------------------------------------------------------------
+num-traits 0.2.19
+MIT License
+https://github.com/rust-num/num-traits
+Copyright [The Rust Project Developers]
+----------------------------------------------------------------------
+regex-automata 0.4.14
+MIT License
+https://github.com/rust-lang/regex
+Copyright [The Rust Project Developers, Andrew Gallant <jamslam@gmail.com>]
+----------------------------------------------------------------------
+regex-syntax 0.8.10
+MIT License
+https://github.com/rust-lang/regex
+Copyright [The Rust Project Developers, Andrew Gallant <jamslam@gmail.com>]
+----------------------------------------------------------------------
+regex 1.12.3
+MIT License
+https://github.com/rust-lang/regex
+Copyright [The Rust Project Developers, Andrew Gallant <jamslam@gmail.com>]
+----------------------------------------------------------------------
+uuid 1.23.0
+MIT License
+https://github.com/uuid-rs/uuid
+Copyright [Ashley Mannix<ashleymannix@live.com.au>, Dylan DPC<dylan.dpc@gmail.com>, Hunar Roop Kahlon<hunar.roop@gmail.com>]
+----------------------------------------------------------------------
+libsqlite3-sys 0.37.0
+MIT License
+https://github.com/rusqlite/rusqlite
+Copyright [The rusqlite developers]
+----------------------------------------------------------------------
+rusqlite 0.39.0
+MIT License
+https://github.com/rusqlite/rusqlite
+Copyright [The rusqlite developers]
+----------------------------------------------------------------------
+nom 7.1.3
+MIT License
+https://github.com/Geal/nom
+Copyright [contact@geoffroycouprie.com]
+----------------------------------------------------------------------
+nom 8.0.0
+MIT License
+https://github.com/rust-bakery/nom
+Copyright [contact@geoffroycouprie.com]
+----------------------------------------------------------------------
+flate2 1.1.9
+MIT License
+https://github.com/rust-lang/flate2-rs
+Copyright [Alex Crichton <alex@alexcrichton.com>, Josh Triplett <josh@joshtriplett.org>]
+----------------------------------------------------------------------
+hyper 1.9.0
+MIT License
+https://github.com/hyperium/hyper
+Copyright [Sean McArthur <sean@seanmonstar.com>]
+----------------------------------------------------------------------
+unicase 2.9.0
+MIT License
+https://github.com/seanmonstar/unicase
+Copyright [Sean McArthur <sean@seanmonstar.com>]
+----------------------------------------------------------------------
+either 1.15.0
+MIT License
+https://github.com/rayon-rs/either
+Copyright [bluss]
+----------------------------------------------------------------------
+itertools 0.14.0
+MIT License
+https://github.com/rust-itertools/itertools
+Copyright [bluss]
+----------------------------------------------------------------------
+rawpointer 0.2.1
+MIT License
+https://github.com/bluss/rawpointer/
+Copyright [bluss]
+----------------------------------------------------------------------
+ndarray 0.17.2
+MIT License
+https://github.com/rust-ndarray/ndarray
+Copyright [Ulrik Sverdrup "bluss", Jim Turner]
+----------------------------------------------------------------------
+new_debug_unreachable 1.0.6
+MIT License
+https://github.com/mbrubeck/rust-debug-unreachable
+Copyright [Matt Brubeck <mbrubeck@limpet.net>, Jonathan Reem <jonathan.reem@gmail.com>]
+----------------------------------------------------------------------
+tempfile 3.27.0
+MIT License
+https://github.com/Stebalien/tempfile
+Copyright [Steven Allen <steven@stebalien.com>, The Rust Project Developers, Ashley Mannix <ashleymannix@live.com.au>, Jason White <me@jasonwhite.io>]
+----------------------------------------------------------------------
+fs2 0.4.3
+MIT License
+https://github.com/danburkert/fs2-rs
+Copyright [Dan Burkert <dan@danburkert.com>]
+----------------------------------------------------------------------
+heck 0.5.0
+MIT License
+https://github.com/withoutboats/heck
+
+----------------------------------------------------------------------
+unicode-normalization-alignments 0.1.12
+MIT License
+https://github.com/n1t0/unicode-normalization
+Copyright [Anthony MOI <m.anthony.moi@gmail.com>]
+----------------------------------------------------------------------
+unicode-segmentation 1.13.2
+MIT License
+https://github.com/unicode-rs/unicode-segmentation
+Copyright [kwantam <kwantam@gmail.com>, Manish Goregaokar <manishsmail@gmail.com>]
+----------------------------------------------------------------------
+quick-error 2.0.1
+MIT License
+http://github.com/tailhook/quick-error
+Copyright [Paul Colomiets <paul@colomiets.name>, Colin Kiegel <kiegel@gmx.de>]
+----------------------------------------------------------------------
+jni-sys 0.3.1
+MIT License
+https://github.com/jni-rs/jni-sys
+Copyright [Steven Fackler <sfackler@gmail.com>]
+----------------------------------------------------------------------
+jni-sys 0.4.1
+MIT License
+https://github.com/jni-rs/jni-sys
+Copyright [Steven Fackler <sfackler@gmail.com>, Robert Bragg <robert@sixbynine.org>]
+----------------------------------------------------------------------
+fallible-iterator 0.3.0
+MIT License
+https://github.com/sfackler/rust-fallible-iterator
+Copyright [Steven Fackler <sfackler@gmail.com>]
+----------------------------------------------------------------------
+socks 0.3.4
+MIT License
+https://github.com/sfackler/rust-socks
+Copyright [Steven Fackler <sfackler@gmail.com>]
+----------------------------------------------------------------------
+terminal_size 0.4.4
+MIT License
+https://github.com/eminence/terminal-size
+Copyright [Andrew Chin <achin@eminence32.net>]
+----------------------------------------------------------------------
+unicode_categories 0.1.1
+MIT License
+https://github.com/swgillespie/unicode-categories
+Copyright [Sean Gillespie <sean@swgillespie.me>]
+----------------------------------------------------------------------
+png 0.18.1
+MIT License
+https://github.com/image-rs/image-png
+Copyright [The image-rs Developers]
+----------------------------------------------------------------------
+schannel 0.1.29
+MIT License
+https://github.com/steffengy/schannel-rs
+Copyright [Steven Fackler <sfackler@gmail.com>, Steffen Butzer <steffen.butzer@outlook.com>]
+----------------------------------------------------------------------
+winapi 0.3.9
+MIT License
+https://github.com/retep998/winapi-rs
+Copyright [Peter Atashian <retep998@gmail.com>]
+----------------------------------------------------------------------
+httparse 1.10.1
+MIT License
+https://github.com/seanmonstar/httparse
+Copyright [Sean McArthur <sean@seanmonstar.com>]
+----------------------------------------------------------------------
+matrixmultiply 0.3.10
+MIT License
+https://github.com/bluss/matrixmultiply/
+Copyright [bluss, R. Janis Goldschmidt]
+----------------------------------------------------------------------
+futures-channel 0.3.32
+MIT License
+https://github.com/rust-lang/futures-rs
+
+----------------------------------------------------------------------
+futures-core 0.3.32
+MIT License
+https://github.com/rust-lang/futures-rs
+
+----------------------------------------------------------------------
+futures-executor 0.3.32
+MIT License
+https://github.com/rust-lang/futures-rs
+
+----------------------------------------------------------------------
+futures-io 0.3.32
+MIT License
+https://github.com/rust-lang/futures-rs
+
+----------------------------------------------------------------------
+futures-macro 0.3.32
+MIT License
+https://github.com/rust-lang/futures-rs
+
+----------------------------------------------------------------------
+futures-sink 0.3.32
+MIT License
+https://github.com/rust-lang/futures-rs
+
+----------------------------------------------------------------------
+futures-task 0.3.32
+MIT License
+https://github.com/rust-lang/futures-rs
+
+----------------------------------------------------------------------
+futures-util 0.3.32
+MIT License
+https://github.com/rust-lang/futures-rs
+
+----------------------------------------------------------------------
+futures 0.3.32
+MIT License
+https://github.com/rust-lang/futures-rs
+
+----------------------------------------------------------------------
+hashbrown 0.16.1
+MIT License
+https://github.com/rust-lang/hashbrown
+Copyright [Amanieu d'Antras <amanieu@gmail.com>]
+----------------------------------------------------------------------
+serde_urlencoded 0.7.1
+MIT License
+https://github.com/nox/serde_urlencoded
+Copyright [Anthony Ramine <n.oxyde@gmail.com>]
+----------------------------------------------------------------------
+utf8parse 0.2.2
+MIT License
+https://github.com/alacritty/vte
+Copyright [Joe Wilm <joe@jwilm.com>, Christian Duerr <contact@christianduerr.com>]
+----------------------------------------------------------------------
+hyper-rustls 0.27.7
+MIT License
+https://github.com/rustls/hyper-rustls
+
+----------------------------------------------------------------------
+rustls-native-certs 0.8.3
+MIT License
+https://github.com/rustls/rustls-native-certs
+
+----------------------------------------------------------------------
+rustls 0.23.37
+MIT License
+https://github.com/rustls/rustls
+
+----------------------------------------------------------------------
+httpdate 1.0.3
+MIT License
+https://github.com/pyfisch/httpdate
+Copyright [Pyfisch <pyfisch@posteo.org>]
+----------------------------------------------------------------------
+lock_api 0.4.14
+MIT License
+https://github.com/Amanieu/parking_lot
+Copyright [Amanieu d'Antras <amanieu@gmail.com>]
+----------------------------------------------------------------------
+parking_lot 0.12.5
+MIT License
+https://github.com/Amanieu/parking_lot
+Copyright [Amanieu d'Antras <amanieu@gmail.com>]
+----------------------------------------------------------------------
+parking_lot_core 0.9.12
+MIT License
+https://github.com/Amanieu/parking_lot
+Copyright [Amanieu d'Antras <amanieu@gmail.com>]
+----------------------------------------------------------------------
+thread_local 1.1.9
+MIT License
+https://github.com/Amanieu/thread_local-rs
+Copyright [Amanieu d'Antras <amanieu@gmail.com>]
+----------------------------------------------------------------------
+fallible-streaming-iterator 0.1.9
+MIT License
+https://github.com/sfackler/fallible-streaming-iterator
+Copyright [Steven Fackler <sfackler@gmail.com>]
+----------------------------------------------------------------------
+native-tls 0.2.18
+MIT License
+https://github.com/rust-native-tls/rust-native-tls
+Copyright [Steven Fackler <sfackler@gmail.com>]
+----------------------------------------------------------------------
+kqueue-sys 1.0.4
+MIT License
+https://gitlab.com/rust-kqueue/rust-kqueue-sys
+Copyright [William Orr <will@worrbase.com>, Daniel (dmilith) Dettlaff <dmilith@me.com>]
+----------------------------------------------------------------------
+kqueue 1.1.1
+MIT License
+https://gitlab.com/rust-kqueue/rust-kqueue
+Copyright [William Orr <will@worrbase.com>]
+----------------------------------------------------------------------
+equivalent 1.0.2
+MIT License
+https://github.com/indexmap-rs/equivalent
+
+----------------------------------------------------------------------
+scopeguard 1.2.0
+MIT License
+https://github.com/bluss/scopeguard
+Copyright [bluss]
+----------------------------------------------------------------------
+reqwest 0.12.28
+MIT License
+https://github.com/seanmonstar/reqwest
+Copyright [Sean McArthur <sean@seanmonstar.com>]
+----------------------------------------------------------------------
+reqwest 0.13.2
+MIT License
+https://github.com/seanmonstar/reqwest
+Copyright [Sean McArthur <sean@seanmonstar.com>]
+----------------------------------------------------------------------
+bitstream-io 4.9.0
+MIT License
+https://github.com/tuffy/bitstream-io
+Copyright [Brian Langenberger <bjl@usa.net>]
+----------------------------------------------------------------------
+fnv 1.0.7
+MIT License
+https://github.com/servo/rust-fnv
+Copyright [Alex Crichton <alex@alexcrichton.com>]
+----------------------------------------------------------------------
+vcpkg 0.2.15
+MIT License
+https://github.com/mcgoo/vcpkg-rs
+Copyright [Jim McGrath <jimmc2@gmail.com>]
+----------------------------------------------------------------------
+aligned 0.4.3
+MIT License
+https://github.com/rust-embedded-community/aligned
+
+----------------------------------------------------------------------
+redox_syscall 0.5.18
+MIT License
+https://gitlab.redox-os.org/redox-os/syscall
+Copyright [Jeremy Soller <jackpot51@gmail.com>]
+----------------------------------------------------------------------
+stable_deref_trait 1.2.1
+MIT License
+https://github.com/storyyeller/stable_deref_trait
+Copyright [Robert Grosse <n210241048576@gmail.com>]
+----------------------------------------------------------------------
+foreign-types-shared 0.1.1
+MIT License
+https://github.com/sfackler/foreign-types
+Copyright [Steven Fackler <sfackler@gmail.com>]
+----------------------------------------------------------------------
+foreign-types 0.3.2
+MIT License
+https://github.com/sfackler/foreign-types
+Copyright [Steven Fackler <sfackler@gmail.com>]
+----------------------------------------------------------------------
+http 1.4.0
+MIT License
+https://github.com/hyperium/http
+Copyright [Alex Crichton <alex@alexcrichton.com>, Carl Lerche <me@carllerche.com>, Sean McArthur <sean@seanmonstar.com>]
+----------------------------------------------------------------------
+tokio-rustls 0.26.4
+MIT License
+https://github.com/rustls/tokio-rustls
+
+----------------------------------------------------------------------
+signal-hook-registry 1.4.8
+MIT License
+https://github.com/vorner/signal-hook
+Copyright [Michal 'vorner' Vaner <vorner@vorner.cz>, Masaki Hara <ackie.h.gmai@gmail.com>]
+----------------------------------------------------------------------
+bytes 1.11.1
+MIT License
+https://github.com/tokio-rs/bytes
+Copyright [Carl Lerche <me@carllerche.com>, Sean McArthur <sean@seanmonstar.com>]
+----------------------------------------------------------------------
+as-slice 0.2.1
+MIT License
+https://github.com/japaric/as-slice
+Copyright [Jorge Aparicio <jorge@japaric.io>, Emil Fresk <emil.fresk@gmail.com>]
+----------------------------------------------------------------------
+autocfg 1.5.0
+MIT License
+https://github.com/cuviper/autocfg
+Copyright [Josh Stone <cuviper@gmail.com>]
+----------------------------------------------------------------------
+rayon-cond 0.4.0
+MIT License
+https://github.com/cuviper/rayon-cond
+Copyright [Josh Stone <cuviper@gmail.com>]
+----------------------------------------------------------------------
+smallvec 1.15.1
+MIT License
+https://github.com/servo/rust-smallvec
+Copyright [The Servo Project Developers]
+----------------------------------------------------------------------
+ahash 0.8.12
+MIT License
+https://github.com/tkaitchuck/ahash
+Copyright [Tom Kaitchuck <Tom.Kaitchuck@gmail.com>]
+----------------------------------------------------------------------
+want 0.3.1
+MIT License
+https://github.com/seanmonstar/want
+Copyright [Sean McArthur <sean@seanmonstar.com>]
+----------------------------------------------------------------------
+dirs-sys 0.5.0
+MIT License
+https://github.com/dirs-dev/dirs-sys-rs
+Copyright [Simon Ochsenreither <simon@ochsenreither.de>]
+----------------------------------------------------------------------
+dirs 6.0.0
+MIT License
+https://github.com/soc/dirs-rs
+Copyright [Simon Ochsenreither <simon@ochsenreither.de>]
+----------------------------------------------------------------------
+try-lock 0.2.5
+MIT License
+https://github.com/seanmonstar/try-lock
+Copyright [Sean McArthur <sean@seanmonstar.com>]
+----------------------------------------------------------------------
+getrandom 0.2.17
+MIT License
+https://github.com/rust-random/getrandom
+Copyright [The Rand Project Developers]
+----------------------------------------------------------------------
+getrandom 0.3.4
+MIT License
+https://github.com/rust-random/getrandom
+Copyright [The Rand Project Developers]
+----------------------------------------------------------------------
+rand_core 0.10.0
+MIT License
+https://github.com/rust-random/rand_core
+Copyright [The Rand Project Developers]
+----------------------------------------------------------------------
+getrandom 0.4.2
+MIT License
+https://github.com/rust-random/getrandom
+Copyright [The Rand Project Developers]
+----------------------------------------------------------------------
+slab 0.4.12
+MIT License
+https://github.com/tokio-rs/slab
+Copyright [Carl Lerche <me@carllerche.com>]
+----------------------------------------------------------------------
+sharded-slab 0.1.7
+MIT License
+https://github.com/hawkw/sharded-slab
+Copyright [Eliza Weisman <eliza@buoyant.io>]
+----------------------------------------------------------------------
+matchers 0.2.0
+MIT License
+https://github.com/hawkw/matchers
+Copyright [Eliza Weisman <eliza@buoyant.io>]
+----------------------------------------------------------------------
+bumpalo 3.20.2
+MIT License
+https://github.com/fitzgen/bumpalo
+Copyright [Nick Fitzgerald <fitzgen@gmail.com>]
+----------------------------------------------------------------------
+ppv-lite86 0.2.21
+MIT License
+https://github.com/cryptocorrosion/cryptocorrosion
+Copyright [The CryptoCorrosion Contributors]
+----------------------------------------------------------------------
+tracing-appender 0.2.4
+MIT License
+https://github.com/tokio-rs/tracing
+Copyright [Zeki Sherif <zekshi@amazon.com>, Tokio Contributors <team@tokio.rs>]
+----------------------------------------------------------------------
+tracing-attributes 0.1.31
+MIT License
+https://github.com/tokio-rs/tracing
+Copyright [Tokio Contributors <team@tokio.rs>, Eliza Weisman <eliza@buoyant.io>, David Barsky <dbarsky@amazon.com>]
+----------------------------------------------------------------------
+tracing-core 0.1.36
+MIT License
+https://github.com/tokio-rs/tracing
+Copyright [Tokio Contributors <team@tokio.rs>]
+----------------------------------------------------------------------
+tracing-log 0.2.0
+MIT License
+https://github.com/tokio-rs/tracing
+Copyright [Tokio Contributors <team@tokio.rs>]
+----------------------------------------------------------------------
+tracing-subscriber 0.3.23
+MIT License
+https://github.com/tokio-rs/tracing
+Copyright [Eliza Weisman <eliza@buoyant.io>, David Barsky <me@davidbarsky.com>, Tokio Contributors <team@tokio.rs>]
+----------------------------------------------------------------------
+tracing 0.1.44
+MIT License
+https://github.com/tokio-rs/tracing
+Copyright [Eliza Weisman <eliza@buoyant.io>, Tokio Contributors <team@tokio.rs>]
+----------------------------------------------------------------------
+tower-layer 0.3.3
+MIT License
+https://github.com/tower-rs/tower
+Copyright [Tower Maintainers <team@tower-rs.com>]
+----------------------------------------------------------------------
+tower-service 0.3.3
+MIT License
+https://github.com/tower-rs/tower
+Copyright [Tower Maintainers <team@tower-rs.com>]
+----------------------------------------------------------------------
+tower 0.5.3
+MIT License
+https://github.com/tower-rs/tower
+Copyright [Tower Maintainers <team@tower-rs.com>]
+----------------------------------------------------------------------
+axum 0.8.8
+MIT License
+https://github.com/tokio-rs/axum
+
+----------------------------------------------------------------------
+tower-http 0.6.8
+MIT License
+https://github.com/tower-rs/tower-http
+Copyright [Tower Maintainers <team@tower-rs.com>]
+----------------------------------------------------------------------
+http-body 1.0.1
+MIT License
+https://github.com/hyperium/http-body
+Copyright [Carl Lerche <me@carllerche.com>, Lucio Franco <luciofranco14@gmail.com>, Sean McArthur <sean@seanmonstar.com>]
+----------------------------------------------------------------------
+http-body-util 0.1.3
+MIT License
+https://github.com/hyperium/http-body
+Copyright [Carl Lerche <me@carllerche.com>, Lucio Franco <luciofranco14@gmail.com>, Sean McArthur <sean@seanmonstar.com>]
+----------------------------------------------------------------------
+chacha20 0.10.0
+MIT License
+https://github.com/RustCrypto/stream-ciphers
+Copyright [RustCrypto Developers]
+----------------------------------------------------------------------
+iana-time-zone-haiku 0.1.2
+MIT License
+https://github.com/strawlab/iana-time-zone
+Copyright [René Kijewski <crates.io@k6i.de>]
+----------------------------------------------------------------------
+iana-time-zone 0.1.65
+MIT License
+https://github.com/strawlab/iana-time-zone
+Copyright [Andrew Straw <strawman@astraw.com>, René Kijewski <rene.kijewski@fu-berlin.de>, Ryan Lopopolo <rjl@hyperbo.la>]
+----------------------------------------------------------------------
+core2 0.4.0
+MIT License
+https://github.com/bbqsrc/core2
+Copyright [Brendan Molloy <brendan@bbqsrc.net>]
+----------------------------------------------------------------------
+cpufeatures 0.3.0
+MIT License
+https://github.com/RustCrypto/utils
+Copyright [RustCrypto Developers]
+----------------------------------------------------------------------
+der 0.8.0
+MIT License
+https://github.com/RustCrypto/formats
+Copyright [RustCrypto Developers]
+----------------------------------------------------------------------
+pem-rfc7468 1.0.0
+MIT License
+https://github.com/RustCrypto/formats
+Copyright [RustCrypto Developers]
+----------------------------------------------------------------------
+qoi 0.4.1
+MIT License
+https://github.com/aldanor/qoi-rust
+Copyright [Ivan Smirnov <rust@ivan.smirnov.ie>]
+----------------------------------------------------------------------
+openssl-macros 0.1.1
+MIT License
+
+
+----------------------------------------------------------------------
+rustls-pki-types 1.14.0
+MIT License
+https://github.com/rustls/pki-types
+
+----------------------------------------------------------------------
+powerfmt 0.2.0
+MIT License
+https://github.com/jhpratt/powerfmt
+Copyright [Jacob Pratt <jacob@jhpratt.dev>]
+----------------------------------------------------------------------
+notify-types 2.1.0
+MIT License
+https://github.com/notify-rs/notify.git
+Copyright [Daniel Faust <hessijames@gmail.com>]
+----------------------------------------------------------------------
+hyper-util 0.1.20
+MIT License
+https://github.com/hyperium/hyper-util
+Copyright [Sean McArthur <sean@seanmonstar.com>]
+----------------------------------------------------------------------
+deranged 0.5.8
+MIT License
+https://github.com/jhpratt/deranged
+Copyright [Jacob Pratt <jacob@jhpratt.dev>]
+----------------------------------------------------------------------
+anstream 1.0.0
+MIT License
+https://github.com/rust-cli/anstyle.git
+
+----------------------------------------------------------------------
+anstyle-parse 1.0.0
+MIT License
+https://github.com/rust-cli/anstyle.git
+
+----------------------------------------------------------------------
+anstyle-query 1.1.5
+MIT License
+https://github.com/rust-cli/anstyle.git
+
+----------------------------------------------------------------------
+anstyle-wincon 3.0.11
+MIT License
+https://github.com/rust-cli/anstyle.git
+
+----------------------------------------------------------------------
+anstyle 1.0.14
+MIT License
+https://github.com/rust-cli/anstyle.git
+
+----------------------------------------------------------------------
+clap 4.6.0
+MIT License
+https://github.com/clap-rs/clap
+
+----------------------------------------------------------------------
+clap_builder 4.6.0
+MIT License
+https://github.com/clap-rs/clap
+
+----------------------------------------------------------------------
+clap_derive 4.6.0
+MIT License
+https://github.com/clap-rs/clap
+
+----------------------------------------------------------------------
+clap_lex 1.1.0
+MIT License
+https://github.com/clap-rs/clap
+
+----------------------------------------------------------------------
+colorchoice 1.0.5
+MIT License
+https://github.com/rust-cli/anstyle.git
+
+----------------------------------------------------------------------
+is_terminal_polyfill 1.70.2
+MIT License
+https://github.com/polyfill-rs/is_terminal_polyfill
+
+----------------------------------------------------------------------
+once_cell_polyfill 1.70.2
+MIT License
+https://github.com/polyfill-rs/once_cell_polyfill
+
+----------------------------------------------------------------------
+serde_spanned 1.1.1
+MIT License
+https://github.com/toml-rs/toml
+
+----------------------------------------------------------------------
+toml 1.1.2+spec-1.1.0
+MIT License
+https://github.com/toml-rs/toml
+
+----------------------------------------------------------------------
+toml_datetime 1.1.1+spec-1.1.0
+MIT License
+https://github.com/toml-rs/toml
+
+----------------------------------------------------------------------
+toml_parser 1.1.2+spec-1.1.0
+MIT License
+https://github.com/toml-rs/toml
+
+----------------------------------------------------------------------
+toml_writer 1.1.1+spec-1.1.0
+MIT License
+https://github.com/toml-rs/toml
+
+----------------------------------------------------------------------
+num-conv 0.2.1
+MIT License
+https://github.com/jhpratt/num-conv
+Copyright [Jacob Pratt <jacob@jhpratt.dev>]
+----------------------------------------------------------------------
+time-core 0.1.8
+MIT License
+https://github.com/time-rs/time
+Copyright [Jacob Pratt <open-source@jhpratt.dev>, Time contributors]
+----------------------------------------------------------------------
+time 0.3.47
+MIT License
+https://github.com/time-rs/time
+Copyright [Jacob Pratt <open-source@jhpratt.dev>, Time contributors]
+----------------------------------------------------------------------
+libc 0.2.184
+MIT License
+https://github.com/rust-lang/libc
+Copyright [The Rust Project Developers]
+----------------------------------------------------------------------
+idna_adapter 1.2.1
+MIT License
+https://github.com/hsivonen/idna_adapter
+Copyright [The rust-url developers]
+----------------------------------------------------------------------
+arrayvec 0.7.6
+MIT License
+https://github.com/bluss/arrayvec
+Copyright [bluss]
+----------------------------------------------------------------------
+synstructure 0.13.2
+MIT License
+https://github.com/mystor/synstructure
+Copyright [Nika Layzell <nika@thelayzells.com>]
+----------------------------------------------------------------------
+ipnet 2.12.0
+MIT License
+https://github.com/krisprice/ipnet
+Copyright [Kris Price <kris@krisprice.nz>]
+----------------------------------------------------------------------
+rand 0.10.0
+MIT License
+https://github.com/rust-random/rand
+Copyright [The Rand Project Developers, The Rust Project Developers]
+----------------------------------------------------------------------
+rand 0.9.2
+MIT License
+https://github.com/rust-random/rand
+Copyright [The Rand Project Developers, The Rust Project Developers]
+----------------------------------------------------------------------
+rand_chacha 0.9.0
+MIT License
+https://github.com/rust-random/rand
+Copyright [The Rand Project Developers, The Rust Project Developers, The CryptoCorrosion Contributors]
+----------------------------------------------------------------------
+rand_core 0.9.5
+MIT License
+https://github.com/rust-random/rand
+Copyright [The Rand Project Developers, The Rust Project Developers]
+----------------------------------------------------------------------
+iri-string 0.7.12
+MIT License
+https://github.com/lo48576/iri-string
+Copyright [YOSHIOKA Takuma <nop_thread@nops.red>]
+----------------------------------------------------------------------
+ureq-proto 0.6.0
+MIT License
+https://github.com/algesten/ureq-proto
+Copyright [Martin Algesten <martin@algesten.se>]
+----------------------------------------------------------------------
+zerocopy-derive 0.8.48
+MIT License
+https://github.com/google/zerocopy
+Copyright [Joshua Liebow-Feeser <joshlf@google.com>, Jack Wrenn <jswrenn@amazon.com>]
+----------------------------------------------------------------------
+zerocopy 0.8.48
+MIT License
+https://github.com/google/zerocopy
+Copyright [Joshua Liebow-Feeser <joshlf@google.com>, Jack Wrenn <jswrenn@amazon.com>]
+----------------------------------------------------------------------
+utf8_iter 1.0.4
+MIT License
+https://github.com/hsivonen/utf8_iter
+Copyright [Henri Sivonen <hsivonen@hsivonen.fi>]
+----------------------------------------------------------------------
+fs_extra 1.3.0
+MIT License
+https://github.com/webdesus/fs_extra
+Copyright [Denis Kurilenko <webdesus@gmail.com>]
+----------------------------------------------------------------------
+static_assertions 1.1.0
+MIT License
+https://github.com/nvzqz/static-assertions-rs
+Copyright [Nikolai Vazquez]
+----------------------------------------------------------------------
+darling 0.20.11
+MIT License
+https://github.com/TedDriggs/darling
+Copyright [Ted Driggs <ted.driggs@outlook.com>]
+----------------------------------------------------------------------
+darling 0.23.0
+MIT License
+https://github.com/TedDriggs/darling
+Copyright [Ted Driggs <ted.driggs@outlook.com>]
+----------------------------------------------------------------------
+darling_core 0.20.11
+MIT License
+https://github.com/TedDriggs/darling
+Copyright [Ted Driggs <ted.driggs@outlook.com>]
+----------------------------------------------------------------------
+darling_core 0.23.0
+MIT License
+https://github.com/TedDriggs/darling
+Copyright [Ted Driggs <ted.driggs@outlook.com>]
+----------------------------------------------------------------------
+darling_macro 0.20.11
+MIT License
+https://github.com/TedDriggs/darling
+Copyright [Ted Driggs <ted.driggs@outlook.com>]
+----------------------------------------------------------------------
+darling_macro 0.23.0
+MIT License
+https://github.com/TedDriggs/darling
+Copyright [Ted Driggs <ted.driggs@outlook.com>]
+----------------------------------------------------------------------
+built 0.8.0
+MIT License
+https://github.com/lukaslueg/built
+Copyright [Lukas Lueg <lukas.lueg@gmail.com>]
+----------------------------------------------------------------------
+arg_enum_proc_macro 0.3.4
+MIT License
+https://github.com/lu-zero/arg_enum_proc_macro
+Copyright [Luca Barbato <lu_zero@gentoo.org>]
+----------------------------------------------------------------------
+interpolate_name 0.2.4
+MIT License
+https://github.com/lu-zero/interpolate_name
+Copyright [Luca Barbato <lu_zero@gentoo.org>]
+----------------------------------------------------------------------
+tiff 0.11.3
+MIT License
+https://github.com/image-rs/image-tiff
+Copyright [The image-rs Developers]
+----------------------------------------------------------------------
+crc32fast 1.5.0
+MIT License
+https://github.com/srijs/rust-crc32fast
+Copyright [Sam Rijs <srijs@airpost.net>, Alex Crichton <alex@alexcrichton.com>]
+----------------------------------------------------------------------
+zeroize 1.8.2
+MIT License
+https://github.com/RustCrypto/utils
+Copyright [The RustCrypto Project Developers]
+----------------------------------------------------------------------
+bytemuck 1.25.0
+MIT License
+https://github.com/Lokathor/bytemuck
+Copyright [Lokathor <zefria@gmail.com>]
+----------------------------------------------------------------------
+macro_rules_attribute-proc_macro 0.2.2
+MIT License
+https://github.com/danielhenrymantilla/macro_rules_attribute-rs
+Copyright [Daniel Henry-Mantilla <daniel.henry.mantilla@gmail.com>]
+----------------------------------------------------------------------
+macro_rules_attribute 0.2.2
+MIT License
+https://github.com/danielhenrymantilla/macro_rules_attribute-rs
+Copyright [Daniel Henry-Mantilla <daniel.henry.mantilla@gmail.com>]
+----------------------------------------------------------------------
+schemars 1.2.1
+MIT License
+https://github.com/GREsau/schemars
+Copyright [Graham Esau <gesau@hotmail.co.uk>]
+----------------------------------------------------------------------
+schemars_derive 1.2.1
+MIT License
+https://github.com/GREsau/schemars
+Copyright [Graham Esau <gesau@hotmail.co.uk>]
+----------------------------------------------------------------------
+rgb 0.8.53
+MIT License
+https://github.com/kornelski/rust-rgb
+Copyright [Kornel Lesiński <kornel@geekhood.net>, James Forster <james.forsterer@gmail.com>]
+----------------------------------------------------------------------
+noop_proc_macro 0.3.0
+MIT License
+https://github.com/lu-zero/noop_proc_macro
+Copyright [Luca Barbato <lu_zero@gentoo.org>]
+----------------------------------------------------------------------
+arbitrary 1.4.2
+MIT License
+https://github.com/rust-fuzz/arbitrary/
+Copyright [The Rust-Fuzz Project Developers, Nick Fitzgerald <fitzgen@gmail.com>, Manish Goregaokar <manishsmail@gmail.com>, Simonas Kazlauskas <arbitrary@kazlauskas.me>, Brian L. Troutwine <brian@troutwine.us>, Corey Farwell <coreyf@rwell.org>]
+----------------------------------------------------------------------
+ureq 2.12.1
+MIT License
+https://github.com/algesten/ureq
+Copyright [Martin Algesten <martin@algesten.se>, Jacob Hoffman-Andrews <ureq@hoffman-andrews.com>]
+----------------------------------------------------------------------
+ureq 3.3.0
+MIT License
+https://github.com/algesten/ureq
+Copyright [Martin Algesten <martin@algesten.se>, Jacob Hoffman-Andrews <ureq@hoffman-andrews.com>]
+----------------------------------------------------------------------
+av-scenechange 0.14.1
+MIT License
+https://github.com/rust-av/av-scenechange
+Copyright [Josh Holmer <jholmer.in@gmail.com>]
+----------------------------------------------------------------------
+tokio-macros 2.6.1
+MIT License
+https://github.com/tokio-rs/tokio
+Copyright [Tokio Contributors <team@tokio.rs>]
+----------------------------------------------------------------------
+axum-core 0.5.6
+MIT License
+https://github.com/tokio-rs/axum
+
+----------------------------------------------------------------------
+maybe-rayon 0.1.1
+MIT License
+https://github.com/shssoichiro/maybe-rayon
+
+----------------------------------------------------------------------
+http-range-header 0.4.2
+MIT License
+https://github.com/MarcusGrass/parse-range-headers
+
+----------------------------------------------------------------------
+compact_str 0.9.0
+MIT License
+https://github.com/ParkMyCar/compact_str
+Copyright [Parker Timmerman <parker@parkertimmerman.com>]
+----------------------------------------------------------------------
+castaway 0.2.4
+MIT License
+https://github.com/sagebind/castaway
+Copyright [Stephen M. Coakley <me@stephencoakley.com>]
+----------------------------------------------------------------------
+rustls-platform-verifier 0.6.2
+MIT License
+https://github.com/rustls/rustls-platform-verifier
+
+----------------------------------------------------------------------
+matchit 0.8.4
+MIT License
+https://github.com/ibraheemdev/matchit
+Copyright [Ibraheem Ahmed <ibraheem@ibraheem.ca>]
+----------------------------------------------------------------------
+aligned-vec 0.6.4
+MIT License
+https://github.com/sarah-ek/aligned-vec/
+Copyright [sarah <>]
+----------------------------------------------------------------------
+libredox 0.1.15
+MIT License
+https://gitlab.redox-os.org/redox-os/libredox.git
+Copyright [4lDO2 <4lDO2@protonmail.com>]
+----------------------------------------------------------------------
+is-docker 0.2.0
+MIT License
+https://github.com/TheLarkInn/is-docker
+Copyright [Sean Larkin <TheLarkInn@users.noreply.github.com>]
+----------------------------------------------------------------------
+is-wsl 0.4.0
+MIT License
+https://github.com/TheLarkInn/is-wsl
+Copyright [Sean Larkin <TheLarkInn@users.noreply.github.com>]
+----------------------------------------------------------------------
+equator-macro 0.4.2
+MIT License
+https://github.com/sarah-ek/equator/
+Copyright [sarah <>]
+----------------------------------------------------------------------
+equator 0.4.2
+MIT License
+https://github.com/sarah-ek/equator/
+Copyright [sarah <>]
+----------------------------------------------------------------------
+ort-sys 2.0.0-rc.11
+MIT License
+https://github.com/pykeio/ort
+Copyright [pyke.io <contact@pyke.io>]
+----------------------------------------------------------------------
+ort 2.0.0-rc.11
+MIT License
+https://github.com/pykeio/ort
+Copyright [pyke.io <contact@pyke.io>, Nicolas Bigaouette <nbigaouette@gmail.com>]
+----------------------------------------------------------------------
+sqlite-wasm-rs 0.5.2
+MIT License
+https://github.com/Spxg/sqlite-wasm-rs
+Copyright [Spxg <unsafe@outlook.es>]
+----------------------------------------------------------------------
+erinra 0.1.0
+MIT License
+https://github.com/alphaleonis/erinra-mcp
+
+----------------------------------------------------------------------
+cesu8 1.1.0
+MIT License
+https://github.com/emk/cesu8-rs
+Copyright [Eric Kidd <git@randomhacks.net>]
+----------------------------------------------------------------------
+chrono 0.4.44
+MIT License
+https://github.com/chronotope/chrono
+
+----------------------------------------------------------------------
+fax 0.2.6
+MIT License
+https://github.com/pdf-rs/fax
+Copyright [Sebastian K <s3bk@protonmail.com>]
+----------------------------------------------------------------------
+fax_derive 0.2.0
+MIT License
+https://github.com/pdf-rs/fax
+Copyright [Sebastian K <s3bk@protonmail.com>]
+----------------------------------------------------------------------
+include_dir 0.7.4
+MIT License
+https://github.com/Michael-F-Bryan/include_dir
+Copyright [Michael Bryan <michaelfbryan@gmail.com>]
+----------------------------------------------------------------------
+include_dir_macros 0.7.4
+MIT License
+https://github.com/Michael-F-Bryan/include_dir
+Copyright [Michael Bryan <michaelfbryan@gmail.com>]
+----------------------------------------------------------------------
+jni-sys-macros 0.4.1
+MIT License
+https://github.com/jni-rs/jni-sys
+Copyright [Robert Bragg <robert@sixbynine.org>]
+----------------------------------------------------------------------
+objc2-core-foundation 0.3.2
+MIT License
+https://github.com/madsmtm/objc2
+
+----------------------------------------------------------------------
+objc2-io-kit 0.3.2
+MIT License
+https://github.com/madsmtm/objc2
+
+----------------------------------------------------------------------
+objc2-system-configuration 0.3.2
+MIT License
+https://github.com/madsmtm/objc2
+
+----------------------------------------------------------------------
+profiling-procmacros 1.0.17
+MIT License
+https://github.com/aclysma/profiling
+Copyright [Philip Degarmo <aclysma@gmail.com>]
+----------------------------------------------------------------------
+profiling 1.0.17
+MIT License
+https://github.com/aclysma/profiling
+Copyright [Philip Degarmo <aclysma@gmail.com>]
+----------------------------------------------------------------------
+r-efi 5.3.0
+MIT License
+https://github.com/r-efi/r-efi
+
+----------------------------------------------------------------------
+r-efi 6.0.0
+MIT License
+https://github.com/r-efi/r-efi
+
+----------------------------------------------------------------------
+rsqlite-vfs 0.1.0
+MIT License
+
+
+----------------------------------------------------------------------
+rustls-platform-verifier-android 0.1.1
+MIT License
+https://github.com/rustls/rustls-platform-verifier
+
+----------------------------------------------------------------------
+simd_helpers 0.1.0
+MIT License
+https://github.com/lu-zero/simd_helpers
+Copyright [Luca Barbato <lu_zero@gentoo.org>]
+----------------------------------------------------------------------
+sqlite-vec 0.1.9
+MIT License
+https://github.com/asg017/sqlite-vec
+Copyright [Alex Garcia <alexsebastian.garcia@gmail.com>]
+----------------------------------------------------------------------
+sse-stream 0.2.1
+MIT License
+https://github.com/4t145/sse-stream/
+Copyright [4t145 <u4t145@163.com>]
+----------------------------------------------------------------------
+wasip2 1.0.2+wasi-0.2.9
+MIT License
+https://github.com/bytecodealliance/wasi-rs
+
+----------------------------------------------------------------------
+wasip3 0.4.0+wasi-0.3.0-rc-2026-01-06
+MIT License
+https://github.com/bytecodealliance/wasi-rs
+
+----------------------------------------------------------------------
+wasite 1.0.2
+MIT License
+https://github.com/ardaku/wasite
+
+----------------------------------------------------------------------
+whoami 2.1.1
+MIT License
+https://github.com/ardaku/whoami
+
+----------------------------------------------------------------------
+winapi-i686-pc-windows-gnu 0.4.0
+MIT License
+https://github.com/retep998/winapi-rs
+Copyright [Peter Atashian <retep998@gmail.com>]
+----------------------------------------------------------------------
+winapi-x86_64-pc-windows-gnu 0.4.0
+MIT License
+https://github.com/retep998/winapi-rs
+Copyright [Peter Atashian <retep998@gmail.com>]
+----------------------------------------------------------------------
+windows-collections 0.3.2
+MIT License
+https://github.com/microsoft/windows-rs
+
+----------------------------------------------------------------------
+windows-core 0.62.2
+MIT License
+https://github.com/microsoft/windows-rs
+
+----------------------------------------------------------------------
+windows-future 0.3.2
+MIT License
+https://github.com/microsoft/windows-rs
+
+----------------------------------------------------------------------
+windows-implement 0.60.2
+MIT License
+https://github.com/microsoft/windows-rs
+
+----------------------------------------------------------------------
+windows-interface 0.59.3
+MIT License
+https://github.com/microsoft/windows-rs
+
+----------------------------------------------------------------------
+windows-link 0.2.1
+MIT License
+https://github.com/microsoft/windows-rs
+
+----------------------------------------------------------------------
+windows-numerics 0.3.1
+MIT License
+https://github.com/microsoft/windows-rs
+
+----------------------------------------------------------------------
+windows-result 0.4.1
+MIT License
+https://github.com/microsoft/windows-rs
+
+----------------------------------------------------------------------
+windows-strings 0.5.1
+MIT License
+https://github.com/microsoft/windows-rs
+
+----------------------------------------------------------------------
+windows-sys 0.45.0
+MIT License
+https://github.com/microsoft/windows-rs
+Copyright [Microsoft]
+----------------------------------------------------------------------
+windows-sys 0.52.0
+MIT License
+https://github.com/microsoft/windows-rs
+Copyright [Microsoft]
+----------------------------------------------------------------------
+windows-sys 0.60.2
+MIT License
+https://github.com/microsoft/windows-rs
+Copyright [Microsoft]
+----------------------------------------------------------------------
+windows-sys 0.61.2
+MIT License
+https://github.com/microsoft/windows-rs
+
+----------------------------------------------------------------------
+windows-targets 0.42.2
+MIT License
+https://github.com/microsoft/windows-rs
+Copyright [Microsoft]
+----------------------------------------------------------------------
+windows-targets 0.52.6
+MIT License
+https://github.com/microsoft/windows-rs
+Copyright [Microsoft]
+----------------------------------------------------------------------
+windows-targets 0.53.5
+MIT License
+https://github.com/microsoft/windows-rs
+
+----------------------------------------------------------------------
+windows-threading 0.2.1
+MIT License
+https://github.com/microsoft/windows-rs
+
+----------------------------------------------------------------------
+windows 0.62.2
+MIT License
+https://github.com/microsoft/windows-rs
+
+----------------------------------------------------------------------
+windows_aarch64_gnullvm 0.42.2
+MIT License
+https://github.com/microsoft/windows-rs
+Copyright [Microsoft]
+----------------------------------------------------------------------
+windows_aarch64_gnullvm 0.52.6
+MIT License
+https://github.com/microsoft/windows-rs
+Copyright [Microsoft]
+----------------------------------------------------------------------
+windows_aarch64_gnullvm 0.53.1
+MIT License
+https://github.com/microsoft/windows-rs
+
+----------------------------------------------------------------------
+windows_aarch64_msvc 0.42.2
+MIT License
+https://github.com/microsoft/windows-rs
+Copyright [Microsoft]
+----------------------------------------------------------------------
+windows_aarch64_msvc 0.52.6
+MIT License
+https://github.com/microsoft/windows-rs
+Copyright [Microsoft]
+----------------------------------------------------------------------
+windows_aarch64_msvc 0.53.1
+MIT License
+https://github.com/microsoft/windows-rs
+
+----------------------------------------------------------------------
+windows_i686_gnu 0.42.2
+MIT License
+https://github.com/microsoft/windows-rs
+Copyright [Microsoft]
+----------------------------------------------------------------------
+windows_i686_gnu 0.52.6
+MIT License
+https://github.com/microsoft/windows-rs
+Copyright [Microsoft]
+----------------------------------------------------------------------
+windows_i686_gnu 0.53.1
+MIT License
+https://github.com/microsoft/windows-rs
+
+----------------------------------------------------------------------
+windows_i686_gnullvm 0.52.6
+MIT License
+https://github.com/microsoft/windows-rs
+Copyright [Microsoft]
+----------------------------------------------------------------------
+windows_i686_gnullvm 0.53.1
+MIT License
+https://github.com/microsoft/windows-rs
+
+----------------------------------------------------------------------
+windows_i686_msvc 0.42.2
+MIT License
+https://github.com/microsoft/windows-rs
+Copyright [Microsoft]
+----------------------------------------------------------------------
+windows_i686_msvc 0.52.6
+MIT License
+https://github.com/microsoft/windows-rs
+Copyright [Microsoft]
+----------------------------------------------------------------------
+windows_i686_msvc 0.53.1
+MIT License
+https://github.com/microsoft/windows-rs
+
+----------------------------------------------------------------------
+windows_x86_64_gnu 0.42.2
+MIT License
+https://github.com/microsoft/windows-rs
+Copyright [Microsoft]
+----------------------------------------------------------------------
+windows_x86_64_gnu 0.52.6
+MIT License
+https://github.com/microsoft/windows-rs
+Copyright [Microsoft]
+----------------------------------------------------------------------
+windows_x86_64_gnu 0.53.1
+MIT License
+https://github.com/microsoft/windows-rs
+
+----------------------------------------------------------------------
+windows_x86_64_gnullvm 0.42.2
+MIT License
+https://github.com/microsoft/windows-rs
+Copyright [Microsoft]
+----------------------------------------------------------------------
+windows_x86_64_gnullvm 0.52.6
+MIT License
+https://github.com/microsoft/windows-rs
+Copyright [Microsoft]
+----------------------------------------------------------------------
+windows_x86_64_gnullvm 0.53.1
+MIT License
+https://github.com/microsoft/windows-rs
+
+----------------------------------------------------------------------
+windows_x86_64_msvc 0.42.2
+MIT License
+https://github.com/microsoft/windows-rs
+Copyright [Microsoft]
+----------------------------------------------------------------------
+windows_x86_64_msvc 0.52.6
+MIT License
+https://github.com/microsoft/windows-rs
+Copyright [Microsoft]
+----------------------------------------------------------------------
+windows_x86_64_msvc 0.53.1
+MIT License
+https://github.com/microsoft/windows-rs
+
+----------------------------------------------------------------------
+zune-inflate 0.2.54
+MIT License
+
+
+----------------------------------------------------------------------
+tokio-stream 0.1.18
+MIT License
+https://github.com/tokio-rs/tokio
+Copyright [Tokio Contributors <team@tokio.rs>]
+----------------------------------------------------------------------
+tokio-util 0.7.18
+MIT License
+https://github.com/tokio-rs/tokio
+Copyright [Tokio Contributors <team@tokio.rs>]
+----------------------------------------------------------------------
+tokio 1.50.0
+MIT License
+https://github.com/tokio-rs/tokio
+Copyright [Tokio Contributors <team@tokio.rs>]
+----------------------------------------------------------------------
+simd-adler32 0.3.9
+MIT License
+https://github.com/mcountryman/simd-adler32
+Copyright [Marvin Countryman <me@maar.vin>]
+----------------------------------------------------------------------
+zune-core 0.5.1
+MIT License
+https://github.com/etemesi254/zune-image
+
+----------------------------------------------------------------------
+zune-jpeg 0.5.15
+MIT License
+https://github.com/etemesi254/zune-image/tree/dev/crates/zune-jpeg
+Copyright [caleb <etemesicaleb@gmail.com>]
+----------------------------------------------------------------------
+miniz_oxide 0.8.9
+MIT License
+https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide
+Copyright [Frommi <daniil.liferenko@gmail.com>, oyvindln <oyvindln@users.noreply.github.com>, Rich Geldreich richgel99@gmail.com]
+----------------------------------------------------------------------
+fdeflate 0.3.7
+MIT License
+https://github.com/image-rs/fdeflate
+Copyright [The image-rs Developers]
+----------------------------------------------------------------------
+image-webp 0.2.4
+MIT License
+https://github.com/image-rs/image-webp
+
+----------------------------------------------------------------------
+image 0.25.10
+MIT License
+https://github.com/image-rs/image
+Copyright [The image-rs Developers]
+----------------------------------------------------------------------
+half 2.7.1
+MIT License
+https://github.com/VoidStarKat/half-rs
+Copyright [Kathryn Long <squeeself@gmail.com>]
+----------------------------------------------------------------------
+ident_case 1.0.1
+MIT License
+https://github.com/TedDriggs/ident_case
+Copyright [Ted Driggs <ted.driggs@outlook.com>]
+----------------------------------------------------------------------
+adler2 2.0.1
+MIT License
+https://github.com/oyvindln/adler2
+Copyright [Jonas Schievink <jonasschievink@gmail.com>, oyvindln <oyvindln@users.noreply.github.com>]
+----------------------------------------------------------------------
+anyhow 1.0.102
+MIT License
+https://github.com/dtolnay/anyhow
+Copyright [David Tolnay <dtolnay@gmail.com>]
+----------------------------------------------------------------------
+async-trait 0.1.89
+MIT License
+https://github.com/dtolnay/async-trait
+Copyright [David Tolnay <dtolnay@gmail.com>]
+----------------------------------------------------------------------
+atomic-waker 1.1.2
+MIT License
+https://github.com/smol-rs/atomic-waker
+Copyright [Stjepan Glavina <stjepang@gmail.com>, Contributors to futures-rs]
+----------------------------------------------------------------------
+dary_heap 0.3.8
+MIT License
+https://github.com/hanmertens/dary_heap
+Copyright [Han Mertens <hanmertens@outlook.com>]
+----------------------------------------------------------------------
+displaydoc 0.2.5
+MIT License
+https://github.com/yaahc/displaydoc
+Copyright [Jane Lusby <jlusby@yaah.dev>]
+----------------------------------------------------------------------
+dyn-clone 1.0.20
+MIT License
+https://github.com/dtolnay/dyn-clone
+Copyright [David Tolnay <dtolnay@gmail.com>]
+----------------------------------------------------------------------
+fastrand 2.3.0
+MIT License
+https://github.com/smol-rs/fastrand
+Copyright [Stjepan Glavina <stjepang@gmail.com>]
+----------------------------------------------------------------------
+itoa 1.0.18
+MIT License
+https://github.com/dtolnay/itoa
+Copyright [David Tolnay <dtolnay@gmail.com>]
+----------------------------------------------------------------------
+linux-raw-sys 0.12.1
+MIT License
+https://github.com/sunfishcode/linux-raw-sys
+Copyright [Dan Gohman <dev@sunfishcode.online>]
+----------------------------------------------------------------------
+minimal-lexical 0.2.1
+MIT License
+https://github.com/Alexhuszagh/minimal-lexical
+Copyright [Alex Huszagh <ahuszagh@gmail.com>]
+----------------------------------------------------------------------
+monostate-impl 0.1.18
+MIT License
+https://github.com/dtolnay/monostate
+Copyright [David Tolnay <dtolnay@gmail.com>]
+----------------------------------------------------------------------
+monostate 0.1.18
+MIT License
+https://github.com/dtolnay/monostate
+Copyright [David Tolnay <dtolnay@gmail.com>]
+----------------------------------------------------------------------
+once_cell 1.21.4
+MIT License
+https://github.com/matklad/once_cell
+Copyright [Aleksey Kladov <aleksey.kladov@gmail.com>]
+----------------------------------------------------------------------
+paste 1.0.15
+MIT License
+https://github.com/dtolnay/paste
+Copyright [David Tolnay <dtolnay@gmail.com>]
+----------------------------------------------------------------------
+pastey 0.1.1
+MIT License
+https://github.com/as1100k/pastey
+Copyright [Aditya Kumar <git@adityais.dev>, David Tolnay <dtolnay@gmail.com>]
+----------------------------------------------------------------------
+pastey 0.2.1
+MIT License
+https://github.com/as1100k/pastey
+Copyright [Aditya Kumar <git@adityais.dev>, David Tolnay <dtolnay@gmail.com>]
+----------------------------------------------------------------------
+pathdiff 0.2.3
+MIT License
+https://github.com/Manishearth/pathdiff
+Copyright [Manish Goregaokar <manishsmail@gmail.com>]
+----------------------------------------------------------------------
+pin-project-lite 0.2.17
+MIT License
+https://github.com/taiki-e/pin-project-lite
+
+----------------------------------------------------------------------
+portable-atomic-util 0.2.6
+MIT License
+https://github.com/taiki-e/portable-atomic-util
+
+----------------------------------------------------------------------
+portable-atomic 1.13.1
+MIT License
+https://github.com/taiki-e/portable-atomic
+
+----------------------------------------------------------------------
+proc-macro2 1.0.106
+MIT License
+https://github.com/dtolnay/proc-macro2
+Copyright [David Tolnay <dtolnay@gmail.com>, Alex Crichton <alex@alexcrichton.com>]
+----------------------------------------------------------------------
+quote 1.0.45
+MIT License
+https://github.com/dtolnay/quote
+Copyright [David Tolnay <dtolnay@gmail.com>]
+----------------------------------------------------------------------
+ref-cast-impl 1.0.25
+MIT License
+https://github.com/dtolnay/ref-cast
+Copyright [David Tolnay <dtolnay@gmail.com>]
+----------------------------------------------------------------------
+ref-cast 1.0.25
+MIT License
+https://github.com/dtolnay/ref-cast
+Copyright [David Tolnay <dtolnay@gmail.com>]
+----------------------------------------------------------------------
+rustix 1.1.4
+MIT License
+https://github.com/bytecodealliance/rustix
+Copyright [Dan Gohman <dev@sunfishcode.online>, Jakub Konka <kubkon@jakubkonka.com>]
+----------------------------------------------------------------------
+rustversion 1.0.22
+MIT License
+https://github.com/dtolnay/rustversion
+Copyright [David Tolnay <dtolnay@gmail.com>]
+----------------------------------------------------------------------
+serde 1.0.228
+MIT License
+https://github.com/serde-rs/serde
+Copyright [Erick Tryzelaar <erick.tryzelaar@gmail.com>, David Tolnay <dtolnay@gmail.com>]
+----------------------------------------------------------------------
+serde_core 1.0.228
+MIT License
+https://github.com/serde-rs/serde
+Copyright [Erick Tryzelaar <erick.tryzelaar@gmail.com>, David Tolnay <dtolnay@gmail.com>]
+----------------------------------------------------------------------
+serde_derive 1.0.228
+MIT License
+https://github.com/serde-rs/serde
+Copyright [Erick Tryzelaar <erick.tryzelaar@gmail.com>, David Tolnay <dtolnay@gmail.com>]
+----------------------------------------------------------------------
+serde_derive_internals 0.29.1
+MIT License
+https://github.com/serde-rs/serde
+Copyright [Erick Tryzelaar <erick.tryzelaar@gmail.com>, David Tolnay <dtolnay@gmail.com>]
+----------------------------------------------------------------------
+serde_json 1.0.149
+MIT License
+https://github.com/serde-rs/json
+Copyright [Erick Tryzelaar <erick.tryzelaar@gmail.com>, David Tolnay <dtolnay@gmail.com>]
+----------------------------------------------------------------------
+serde_path_to_error 0.1.20
+MIT License
+https://github.com/dtolnay/path-to-error
+Copyright [David Tolnay <dtolnay@gmail.com>]
+----------------------------------------------------------------------
+syn 2.0.117
+MIT License
+https://github.com/dtolnay/syn
+Copyright [David Tolnay <dtolnay@gmail.com>]
+----------------------------------------------------------------------
+thiserror-impl 1.0.69
+MIT License
+https://github.com/dtolnay/thiserror
+Copyright [David Tolnay <dtolnay@gmail.com>]
+----------------------------------------------------------------------
+thiserror-impl 2.0.18
+MIT License
+https://github.com/dtolnay/thiserror
+Copyright [David Tolnay <dtolnay@gmail.com>]
+----------------------------------------------------------------------
+thiserror 1.0.69
+MIT License
+https://github.com/dtolnay/thiserror
+Copyright [David Tolnay <dtolnay@gmail.com>]
+----------------------------------------------------------------------
+thiserror 2.0.18
+MIT License
+https://github.com/dtolnay/thiserror
+Copyright [David Tolnay <dtolnay@gmail.com>]
+----------------------------------------------------------------------
+unicode-ident 1.0.24
+MIT License
+https://github.com/dtolnay/unicode-ident
+Copyright [David Tolnay <dtolnay@gmail.com>]
+----------------------------------------------------------------------
+utf8-zero 0.8.1
+MIT License
+https://github.com/algesten/utf8-zero
+Copyright [Simon Sapin <simon.sapin@exyr.org>, Martin Algesten <martin@algesten.se>]
+----------------------------------------------------------------------
+wasi 0.11.1+wasi-snapshot-preview1
+MIT License
+https://github.com/bytecodealliance/wasi
+Copyright [The Cranelift Project Developers]
+----------------------------------------------------------------------
+wasi 0.14.7+wasi-0.2.4
+MIT License
+https://github.com/bytecodealliance/wasi-rs
+
+----------------------------------------------------------------------
+wasm-streams 0.4.2
+MIT License
+https://github.com/MattiasBuelens/wasm-streams/
+Copyright [Mattias Buelens <mattias@buelens.com>]
+----------------------------------------------------------------------
+wit-bindgen 0.51.0
+MIT License
+https://github.com/bytecodealliance/wit-bindgen
+Copyright [Alex Crichton <alex@alexcrichton.com>]
+----------------------------------------------------------------------
+zmij 1.0.21
+MIT License
+https://github.com/dtolnay/zmij
+Copyright [David Tolnay <dtolnay@gmail.com>]
+----------------------------------------------------------------------
+allocator-api2 0.2.21
+MIT License
+https://github.com/zakarumych/allocator-api2
+Copyright [Zakarum <zaq.dev@icloud.com>]
+----------------------------------------------------------------------
+winnow 1.0.1
+MIT License
+https://github.com/winnow-rs/winnow
+
+----------------------------------------------------------------------
+ntapi 0.4.3
+MIT License
+https://github.com/MSxDOS/ntapi
+Copyright [MSxDOS <melcodos@gmail.com>]
+----------------------------------------------------------------------
+android_system_properties 0.1.5
+MIT License
+https://github.com/nical/android_system_properties
+Copyright [Nicolas Silva <nical@fastmail.com>]
+----------------------------------------------------------------------
+base64 0.13.1
+MIT License
+https://github.com/marshallpierce/rust-base64
+Copyright [Alice Maz <alice@alicemaz.com>, Marshall Pierce <marshall@mpierce.org>]
+----------------------------------------------------------------------
+base64 0.22.1
+MIT License
+https://github.com/marshallpierce/rust-base64
+Copyright [Marshall Pierce <marshall@mpierce.org>]
+----------------------------------------------------------------------
+aho-corasick 1.1.4
+MIT License
+https://github.com/BurntSushi/aho-corasick
+Copyright [Andrew Gallant <jamslam@gmail.com>]
+----------------------------------------------------------------------
+byteorder-lite 0.1.0
+MIT License
+https://github.com/image-rs/byteorder-lite
+
+----------------------------------------------------------------------
+byteorder 1.5.0
+MIT License
+https://github.com/BurntSushi/byteorder
+Copyright [Andrew Gallant <jamslam@gmail.com>]
+----------------------------------------------------------------------
+memchr 2.8.0
+MIT License
+https://github.com/BurntSushi/memchr
+Copyright [Andrew Gallant <jamslam@gmail.com>, bluss]
+----------------------------------------------------------------------
+walkdir 2.5.0
+MIT License
+https://github.com/BurntSushi/walkdir
+Copyright [Andrew Gallant <jamslam@gmail.com>]
+----------------------------------------------------------------------
+strsim 0.11.1
+MIT License
+https://github.com/rapidfuzz/strsim-rs
+Copyright [Danny Guo <danny@dannyguo.com>, maxbachmann <oss@maxbachmann.de>]
+----------------------------------------------------------------------
+sysinfo 0.38.4
+MIT License
+https://github.com/GuillaumeGomez/sysinfo
+Copyright [Guillaume Gomez <guillaume1.gomez@gmail.com>]
+----------------------------------------------------------------------
+combine 4.6.7
+MIT License
+https://github.com/Marwes/combine
+Copyright [Markus Westerlind <marwes91@gmail.com>]
+----------------------------------------------------------------------
+shlex 1.3.0
+MIT License
+https://github.com/comex/rust-shlex
+Copyright [comex <comexk@gmail.com>, Fenhl <fenhl@fenhl.net>, Adrian Taylor <adetaylor@chromium.org>, Alex Touchet <alextouchet@outlook.com>, Daniel Parks <dp+git@oxidized.org>, Garrett Berg <googberg@gmail.com>]
+----------------------------------------------------------------------
+fsevent-sys 4.1.0
+MIT License
+https://github.com/octplane/fsevent-rust/tree/master/fsevent-sys
+Copyright [Pierre Baillet <pierre@baillet.name>]
+----------------------------------------------------------------------
+security-framework-sys 2.17.0
+MIT License
+https://github.com/kornelski/rust-security-framework
+Copyright [Steven Fackler <sfackler@gmail.com>, Kornel <kornel@geekhood.net>]
+----------------------------------------------------------------------
+security-framework 3.7.0
+MIT License
+https://github.com/kornelski/rust-security-framework
+Copyright [Steven Fackler <sfackler@gmail.com>, Kornel <kornel@geekhood.net>]
+----------------------------------------------------------------------
+gif 0.14.1
+MIT License
+https://github.com/image-rs/image-gif
+Copyright [The image-rs Developers]
+----------------------------------------------------------------------
+y4m 0.8.0
+MIT License
+https://github.com/image-rs/y4m.git
+Copyright [Kagami Hiiragi <kagami@genshiken.org>]
+----------------------------------------------------------------------
+aws-lc-sys 0.39.1
+MIT License
+https://github.com/aws/aws-lc-rs
+Copyright [AWS-LC]
+----------------------------------------------------------------------
+bit_field 0.10.3
+MIT License
+https://github.com/phil-opp/rust-bit-field
+Copyright [Philipp Oppermann <dev@phil-opp.com>]
+----------------------------------------------------------------------
+color_quant 1.1.0
+MIT License
+https://github.com/image-rs/color_quant.git
+Copyright [nwin <nwin@users.noreply.github.com>]
+----------------------------------------------------------------------
+jni 0.21.1
+MIT License
+https://github.com/jni-rs/jni-rs
+Copyright [Josh Chase <josh@prevoty.com>]
+----------------------------------------------------------------------
+derive_builder 0.20.2
+MIT License
+https://github.com/colin-kiegel/rust-derive-builder
+Copyright [Colin Kiegel <kiegel@gmx.de>, Pascal Hertleif <killercup@gmail.com>, Jan-Erik Rediger <janerik@fnordig.de>, Ted Driggs <ted.driggs@outlook.com>]
+----------------------------------------------------------------------
+derive_builder_core 0.20.2
+MIT License
+https://github.com/colin-kiegel/rust-derive-builder
+Copyright [Colin Kiegel <kiegel@gmx.de>, Pascal Hertleif <killercup@gmail.com>, Jan-Erik Rediger <janerik@fnordig.de>, Ted Driggs <ted.driggs@outlook.com>]
+----------------------------------------------------------------------
+derive_builder_macro 0.20.2
+MIT License
+https://github.com/colin-kiegel/rust-derive-builder
+Copyright [Colin Kiegel <kiegel@gmx.de>, Pascal Hertleif <killercup@gmail.com>, Jan-Erik Rediger <janerik@fnordig.de>, Ted Driggs <ted.driggs@outlook.com>]
+----------------------------------------------------------------------
+same-file 1.0.6
+MIT License
+https://github.com/BurntSushi/same-file
+Copyright [Andrew Gallant <jamslam@gmail.com>]
+----------------------------------------------------------------------
+winapi-util 0.1.11
+MIT License
+https://github.com/BurntSushi/winapi-util
+Copyright [Andrew Gallant <jamslam@gmail.com>]
+----------------------------------------------------------------------
+redox_users 0.5.2
+MIT License
+https://gitlab.redox-os.org/redox-os/users
+Copyright [Jose Narvaez <goyox86@gmail.com>, Wesley Hershberger <mggmugginsmc@gmail.com>]
+----------------------------------------------------------------------
+crossbeam-channel 0.5.15
+MIT License
+https://github.com/crossbeam-rs/crossbeam
+
+----------------------------------------------------------------------
+crossbeam-deque 0.8.6
+MIT License
+https://github.com/crossbeam-rs/crossbeam
+
+----------------------------------------------------------------------
+crossbeam-epoch 0.9.18
+MIT License
+https://github.com/crossbeam-rs/crossbeam
+
+----------------------------------------------------------------------
+crossbeam-utils 0.8.21
+MIT License
+https://github.com/crossbeam-rs/crossbeam
+
+----------------------------------------------------------------------
+weezl 0.1.12
+MIT License
+https://github.com/image-rs/weezl
+Copyright [The image-rs Developers]
+----------------------------------------------------------------------
+crunchy 0.2.4
+MIT License
+https://github.com/eira-fransham/crunchy
+Copyright [Eira Fransham <jackefransham@gmail.com>]
+----------------------------------------------------------------------
+open 5.3.3
+MIT License
+https://github.com/Byron/open-rs
+Copyright [Sebastian Thiel <byronimo@gmail.com>]
+----------------------------------------------------------------------
+version_check 0.9.5
+MIT License
+https://github.com/SergioBenitez/version_check
+Copyright [Sergio Benitez <sb@sergio.bz>]
+----------------------------------------------------------------------
+nu-ansi-term 0.50.3
+MIT License
+https://github.com/nushell/nu-ansi-term
+Copyright [ogham@bsago.me, Ryan Scheel (Havvy) <ryan.havvy@gmail.com>, Josh Triplett <josh@joshtriplett.org>, The Nushell Project Developers]
+----------------------------------------------------------------------
+mime_guess 2.0.5
+MIT License
+https://github.com/abonander/mime_guess
+Copyright [Austin Bonander <austin.bonander@gmail.com>]
+----------------------------------------------------------------------
+hashlink 0.11.0
+MIT License
+https://github.com/kyren/hashlink
+
+----------------------------------------------------------------------
+loop9 0.1.5
+MIT License
+https://gitlab.com/kornelski/loop9.git
+Copyright [Kornel <kornel@geekhood.net>]
+----------------------------------------------------------------------
+option-ext 0.2.0
+Mozilla Public License 2.0
+https://github.com/soc/option-ext.git
+Copyright [Simon Ochsenreither <simon@ochsenreither.de>]
+----------------------------------------------------------------------
+libfuzzer-sys 0.4.12
+University of Illinois/NCSA Open Source License
+https://github.com/rust-fuzz/libfuzzer
+Copyright [The rust-fuzz Project Developers]
+----------------------------------------------------------------------
+unicode-ident 1.0.24
+Unicode License v3
+https://github.com/dtolnay/unicode-ident
+Copyright [David Tolnay <dtolnay@gmail.com>]
+----------------------------------------------------------------------
+icu_collections 2.2.0
+Unicode License v3
+https://github.com/unicode-org/icu4x
+Copyright [The ICU4X Project Developers]
+----------------------------------------------------------------------
+icu_locale_core 2.2.0
+Unicode License v3
+https://github.com/unicode-org/icu4x
+Copyright [The ICU4X Project Developers]
+----------------------------------------------------------------------
+icu_normalizer 2.2.0
+Unicode License v3
+https://github.com/unicode-org/icu4x
+Copyright [The ICU4X Project Developers]
+----------------------------------------------------------------------
+icu_normalizer_data 2.2.0
+Unicode License v3
+https://github.com/unicode-org/icu4x
+Copyright [The ICU4X Project Developers]
+----------------------------------------------------------------------
+icu_properties 2.2.0
+Unicode License v3
+https://github.com/unicode-org/icu4x
+Copyright [The ICU4X Project Developers]
+----------------------------------------------------------------------
+icu_properties_data 2.2.0
+Unicode License v3
+https://github.com/unicode-org/icu4x
+Copyright [The ICU4X Project Developers]
+----------------------------------------------------------------------
+icu_provider 2.2.0
+Unicode License v3
+https://github.com/unicode-org/icu4x
+Copyright [The ICU4X Project Developers]
+----------------------------------------------------------------------
+litemap 0.8.2
+Unicode License v3
+https://github.com/unicode-org/icu4x
+Copyright [The ICU4X Project Developers]
+----------------------------------------------------------------------
+potential_utf 0.1.5
+Unicode License v3
+https://github.com/unicode-org/icu4x
+Copyright [The ICU4X Project Developers]
+----------------------------------------------------------------------
+tinystr 0.8.3
+Unicode License v3
+https://github.com/unicode-org/icu4x
+Copyright [The ICU4X Project Developers]
+----------------------------------------------------------------------
+writeable 0.6.2
+Unicode License v3
+https://github.com/unicode-org/icu4x
+Copyright [The ICU4X Project Developers]
+----------------------------------------------------------------------
+yoke-derive 0.8.2
+Unicode License v3
+https://github.com/unicode-org/icu4x
+Copyright [Manish Goregaokar <manishsmail@gmail.com>]
+----------------------------------------------------------------------
+yoke 0.8.2
+Unicode License v3
+https://github.com/unicode-org/icu4x
+Copyright [Manish Goregaokar <manishsmail@gmail.com>]
+----------------------------------------------------------------------
+zerofrom-derive 0.1.7
+Unicode License v3
+https://github.com/unicode-org/icu4x
+Copyright [Manish Goregaokar <manishsmail@gmail.com>]
+----------------------------------------------------------------------
+zerofrom 0.1.7
+Unicode License v3
+https://github.com/unicode-org/icu4x
+Copyright [Manish Goregaokar <manishsmail@gmail.com>]
+----------------------------------------------------------------------
+zerotrie 0.2.4
+Unicode License v3
+https://github.com/unicode-org/icu4x
+Copyright [The ICU4X Project Developers]
+----------------------------------------------------------------------
+zerovec-derive 0.11.3
+Unicode License v3
+https://github.com/unicode-org/icu4x
+Copyright [Manish Goregaokar <manishsmail@gmail.com>]
+----------------------------------------------------------------------
+zerovec 0.11.6
+Unicode License v3
+https://github.com/unicode-org/icu4x
+Copyright [The ICU4X Project Developers]
+----------------------------------------------------------------------
+foldhash 0.2.0
+zlib License
+https://github.com/orlp/foldhash
+Copyright [Orson Peters <orsonpeters@gmail.com>]
+----------------------------------------------------------------------
+@asamuzakjp/css-color@5.0.1
+MIT
+https://github.com/asamuzaK/cssColor
+Copyright asamuzaK
+----------------------------------------------------------------------
+@asamuzakjp/dom-selector@7.0.4
+MIT
+https://github.com/asamuzaK/domSelector
+Copyright asamuzaK
+----------------------------------------------------------------------
+@asamuzakjp/nwsapi@2.3.9
+MIT
+https://github.com/dperini/nwsapi
+Copyright Diego Perini
+----------------------------------------------------------------------
+@bramus/specificity@2.4.2
+MIT
+https://github.com/bramus/specificity
+Copyright Bramus Van Damme
+----------------------------------------------------------------------
+@csstools/color-helpers@6.0.2
+MIT-0
+https://github.com/csstools/postcss-plugins
+----------------------------------------------------------------------
+@csstools/css-calc@3.1.1
+MIT
+https://github.com/csstools/postcss-plugins
+----------------------------------------------------------------------
+@csstools/css-color-parser@4.0.2
+MIT
+https://github.com/csstools/postcss-plugins
+----------------------------------------------------------------------
+@csstools/css-parser-algorithms@4.0.0
+MIT
+https://github.com/csstools/postcss-plugins
+----------------------------------------------------------------------
+@csstools/css-syntax-patches-for-csstree@1.1.2
+MIT-0
+https://github.com/csstools/postcss-plugins
+----------------------------------------------------------------------
+@csstools/css-tokenizer@4.0.0
+MIT
+https://github.com/csstools/postcss-plugins
+----------------------------------------------------------------------
+@exodus/bytes@1.15.0
+MIT
+https://github.com/ExodusOSS/bytes
+Copyright Exodus Movement, Inc.
+----------------------------------------------------------------------
+@tailwindcss/typography@0.5.19
+MIT
+https://github.com/tailwindlabs/tailwindcss-typography
+----------------------------------------------------------------------
+@types/trusted-types@2.0.7
+MIT
+https://github.com/DefinitelyTyped/DefinitelyTyped
+----------------------------------------------------------------------
+bidi-js@1.0.3
+MIT
+https://github.com/lojjic/bidi-js
+Copyright Jason Johnston
+----------------------------------------------------------------------
+css-tree@3.2.1
+MIT
+https://github.com/csstree/csstree
+Copyright Roman Dvornov
+----------------------------------------------------------------------
+cssesc@3.0.0
+MIT
+https://github.com/mathiasbynens/cssesc
+Copyright Mathias Bynens
+----------------------------------------------------------------------
+data-urls@7.0.0
+MIT
+https://github.com/jsdom/data-urls
+Copyright Domenic Denicola
+----------------------------------------------------------------------
+decimal.js@10.6.0
+MIT
+https://github.com/MikeMcl/decimal.js
+Copyright Michael Mclaughlin
+----------------------------------------------------------------------
+dompurify@3.3.3
+(MPL-2.0 OR Apache-2.0)
+https://github.com/cure53/DOMPurify
+Copyright Dr.-Ing. Mario Heiderich, Cure53
+----------------------------------------------------------------------
+entities@6.0.1
+BSD-2-Clause
+https://github.com/fb55/entities
+Copyright Felix Boehm
+----------------------------------------------------------------------
+highlight.js@11.11.1
+BSD-3-Clause
+https://github.com/highlightjs/highlight.js
+Copyright Josh Goebel
+----------------------------------------------------------------------
+html-encoding-sniffer@6.0.0
+MIT
+https://github.com/jsdom/html-encoding-sniffer
+Copyright Domenic Denicola
+----------------------------------------------------------------------
+is-potential-custom-element-name@1.0.1
+MIT
+https://github.com/mathiasbynens/is-potential-custom-element-name
+Copyright Mathias Bynens
+----------------------------------------------------------------------
+isomorphic-dompurify@3.7.1
+MIT
+https://github.com/kkomelin/isomorphic-dompurify
+----------------------------------------------------------------------
+jsdom@29.0.1
+MIT
+https://github.com/jsdom/jsdom
+----------------------------------------------------------------------
+lru-cache@11.2.7
+BlueOak-1.0.0
+https://github.com/isaacs/node-lru-cache
+Copyright Isaac Z. Schlueter
+----------------------------------------------------------------------
+marked@17.0.5
+MIT
+https://github.com/markedjs/marked
+Copyright Christopher Jeffrey
+----------------------------------------------------------------------
+mdn-data@2.27.1
+CC0-1.0
+https://github.com/mdn/data
+Copyright Mozilla Developer Network
+----------------------------------------------------------------------
+parse5@8.0.0
+MIT
+https://github.com/inikulin/parse5
+Copyright Ivan Nikulin
+----------------------------------------------------------------------
+postcss-selector-parser@6.0.10
+MIT
+https://github.com/postcss/postcss-selector-parser
+----------------------------------------------------------------------
+punycode@2.3.1
+MIT
+https://github.com/mathiasbynens/punycode.js
+Copyright Mathias Bynens
+----------------------------------------------------------------------
+require-from-string@2.0.2
+MIT
+https://github.com/floatdrop/require-from-string
+Copyright Vsevolod Strukchinsky
+----------------------------------------------------------------------
+saxes@6.0.0
+ISC
+https://github.com/lddubeau/saxes
+Copyright Louis-Dominique Dubeau
+----------------------------------------------------------------------
+source-map-js@1.2.1
+BSD-3-Clause
+https://github.com/7rulnik/source-map-js
+Copyright Valentin 7rulnik Semirulnik
+----------------------------------------------------------------------
+symbol-tree@3.2.4
+MIT
+https://github.com/jsdom/js-symbol-tree
+Copyright Joris van der Wel
+----------------------------------------------------------------------
+tailwindcss@4.2.2
+MIT
+https://github.com/tailwindlabs/tailwindcss
+----------------------------------------------------------------------
+tldts-core@7.0.27
+MIT
+https://github.com/remusao/tldts
+Copyright Rémi Berson
+----------------------------------------------------------------------
+tldts@7.0.27
+MIT
+https://github.com/remusao/tldts
+Copyright Rémi Berson
+----------------------------------------------------------------------
+tough-cookie@6.0.1
+BSD-3-Clause
+https://github.com/salesforce/tough-cookie
+Copyright Jeremy Stashewsky
+----------------------------------------------------------------------
+tr46@6.0.0
+MIT
+https://github.com/jsdom/tr46
+Copyright Sebastian Mayr
+----------------------------------------------------------------------
+undici@7.24.6
+MIT
+https://github.com/nodejs/undici
+----------------------------------------------------------------------
+util-deprecate@1.0.2
+MIT
+https://github.com/TooTallNate/util-deprecate
+Copyright Nathan Rajlich
+----------------------------------------------------------------------
+w3c-xmlserializer@5.0.0
+MIT
+https://github.com/jsdom/w3c-xmlserializer
+----------------------------------------------------------------------
+webidl-conversions@8.0.1
+BSD-2-Clause
+https://github.com/jsdom/webidl-conversions
+Copyright Domenic Denicola
+----------------------------------------------------------------------
+whatwg-mimetype@5.0.0
+MIT
+https://github.com/jsdom/whatwg-mimetype
+Copyright Domenic Denicola
+----------------------------------------------------------------------
+whatwg-url@16.0.1
+MIT
+https://github.com/jsdom/whatwg-url
+Copyright Sebastian Mayr
+----------------------------------------------------------------------
+xml-name-validator@5.0.0
+Apache-2.0
+https://github.com/jsdom/xml-name-validator
+Copyright Domenic Denicola
+----------------------------------------------------------------------
+xmlchars@2.2.0
+MIT
+https://github.com/lddubeau/xmlchars
+Copyright Louis-Dominique Dubeau
