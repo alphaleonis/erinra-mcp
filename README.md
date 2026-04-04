@@ -1,5 +1,9 @@
 # Erinra
 
+[![CI](https://github.com/alphaleonis/erinra-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/alphaleonis/erinra-mcp/actions/workflows/ci.yml)
+[![Crates.io](https://img.shields.io/crates/v/erinra)](https://crates.io/crates/erinra)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 A memory MCP server for LLM coding assistants. Single Rust binary, local SQLite storage, local embeddings, zero external dependencies.
 
 Erinra stores, indexes, and retrieves memories via the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) over stdio transport. The server handles storage and retrieval; the calling LLM makes all semantic decisions (deduplication, merging, corrections).
