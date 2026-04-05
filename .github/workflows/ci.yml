@@ -39,8 +39,11 @@ jobs:
 
       - uses: jdx/mise-action@v4
 
+      - name: Install cargo-binstall
+        uses: cargo-bins/cargo-binstall@main
+
       - name: Install cargo-about
-        run: cargo install cargo-about
+        run: cargo binstall --no-confirm cargo-about
 
       - name: CI pipeline
         run: mise run ci
