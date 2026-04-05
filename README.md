@@ -36,6 +36,8 @@ cargo install --git https://github.com/alphaleonis/erinra-mcp.git
 
 ### Or build from source
 
+Requires [Node.js](https://nodejs.org/) (for building the web dashboard frontend).
+
 ```bash
 git clone https://github.com/alphaleonis/erinra-mcp.git
 cd erinra-mcp
