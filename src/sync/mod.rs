@@ -370,21 +370,27 @@ mod tests {
         assert!(matches!(&records[2], SyncRecord::Link(_)));
         assert!(matches!(&records[3], SyncRecord::Tombstone(_)));
 
-        // Memories are sorted by created_at ASC (id1 created first).
-        if let SyncRecord::Memory(m) = &records[0] {
-            assert_eq!(m.id, id1);
-            assert!(
-                m.archived_at.is_some(),
-                "archived memory should have archived_at"
-            );
-        } else {
-            panic!("expected memory record");
-        }
-        if let SyncRecord::Memory(m) = &records[1] {
-            assert_eq!(m.id, id2);
-        } else {
-            panic!("expected memory record");
-        }
+        // Memories are sorted by created_at ASC, id ASC. When timestamps
+        // tie (common in fast tests), order depends on UUID sort.
+        let mem0 = match &records[0] {
+            SyncRecord::Memory(m) => m,
+            _ => panic!("expected memory record"),
+        };
+        let mem1 = match &records[1] {
+            SyncRecord::Memory(m) => m,
+            _ => panic!("expected memory record"),
+        };
+        let ids: std::collections::HashSet<&str> =
+            [mem0.id.as_str(), mem1.id.as_str()].into_iter().collect();
+        assert!(ids.contains(id1.as_str()));
+        assert!(ids.contains(id2.as_str()));
+
+        // The archived memory (id1) should have archived_at set.
+        let archived = if mem0.id == id1 { mem0 } else { mem1 };
+        assert!(
+            archived.archived_at.is_some(),
+            "archived memory should have archived_at"
+        );
 
         // Link should reference the correct source/target.
         if let SyncRecord::Link(l) = &records[2] {
