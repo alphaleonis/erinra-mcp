@@ -56,10 +56,6 @@ jobs:
           git tag "${{ inputs.version }}"
           git push origin "${{ inputs.version }}"
 
-      - name: Delete tag on failure
-        if: failure()
-        run: git push origin --delete "${{ inputs.version }}" 2>/dev/null || true
-
   build:
     needs: validate
     strategy:
@@ -149,3 +145,20 @@ jobs:
             ${{ needs.validate.outputs.prerelease == 'true' && '--prerelease' || '' }} \
             erinra-${{ inputs.version }}-*.tar.gz \
             erinra-${{ inputs.version }}-*.zip
+
+  cleanup:
+    if: ${{ failure() }}
+    needs: [validate, build, release]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Delete tag
+        run: git push origin --delete "${{ inputs.version }}" 2>/dev/null || true
+
+      - name: Delete draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release delete "${{ inputs.version }}" --yes 2>/dev/null || true
