@@ -150,7 +150,7 @@ pub fn list_peer_files(sync_dir: &Path, own_filename: &str) -> Result<Vec<std::p
 /// Import all peer exports (for restore_on_start). Returns combined stats.
 pub fn restore_from_peers(
     db: &Database,
-    embedder: &dyn crate::embedding::Embedder,
+    embedder: &dyn Embedder,
     sync_dir: &Path,
     own_filename: &str,
 ) -> Result<super::ImportStats> {
@@ -504,9 +504,9 @@ fn import_from_file(
 
     if is_gzip {
         let mut gz = flate2::read::GzDecoder::new(buf_reader);
-        super::import(db, embedder, &mut gz)
+        super::import(db, |texts| embedder.embed_documents(texts), &mut gz)
     } else {
-        super::import(db, embedder, &mut buf_reader)
+        super::import(db, |texts| embedder.embed_documents(texts), &mut buf_reader)
     }
 }
 

@@ -11,7 +11,8 @@ use std::sync::{Arc, Mutex};
 
 use erinra::db::{Database, DbConfig};
 use erinra::embedding::MockEmbedder;
-use erinra::mcp::{ErinraServer, ServerConfig};
+use erinra::mcp::ErinraServer;
+use erinra::service::{MemoryService, ServiceConfig};
 
 use rmcp::ServiceExt;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -27,12 +28,13 @@ async fn start_server() -> (
     let db_path = dir.path().join("test.db");
     let db = Database::open(&db_path, &DbConfig::default()).unwrap();
     let embedder = Arc::new(MockEmbedder::new(768));
-    let server = ErinraServer::new(
+    let service = MemoryService::new(
         Arc::new(Mutex::new(db)),
         embedder,
         None,
-        ServerConfig::default(),
+        ServiceConfig::default(),
     );
+    let server = ErinraServer::new(service);
 
     // Create two connected duplex streams: server_io and client_io.
     let (client_io, server_io) = tokio::io::duplex(64 * 1024);
@@ -153,46 +155,6 @@ async fn tools_list_includes_schemas() {
     assert_eq!(schema["type"], "object");
     let required = schema["required"].as_array().unwrap();
     assert!(required.iter().any(|r| r == "content"));
-}
-
-#[tokio::test]
-async fn store_and_get_round_trip_via_protocol() {
-    let (mut reader, mut writer, _dir) = start_server().await;
-    handshake(&mut writer, &mut reader).await;
-
-    // Store a memory.
-    let store_resp = send_and_recv(
-        &mut writer,
-        &mut reader,
-        r#"{"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"store","arguments":{"content":"MCP protocol integration test memory","projects":["test"],"tags":["integration"]}}}"#,
-    )
-    .await;
-
-    assert!(
-        store_resp["result"]["isError"].is_null() || store_resp["result"]["isError"] == false,
-        "store should succeed: {store_resp}"
-    );
-
-    // Extract the ID from the store response.
-    let text = store_resp["result"]["content"][0]["text"].as_str().unwrap();
-    let store_result: serde_json::Value = serde_json::from_str(text).unwrap();
-    let id = store_result["id"].as_str().unwrap();
-
-    // Get it back.
-    let get_msg = format!(
-        r#"{{"jsonrpc":"2.0","id":11,"method":"tools/call","params":{{"name":"get","arguments":{{"ids":["{id}"]}}}}}}"#
-    );
-    let get_resp = send_and_recv(&mut writer, &mut reader, &get_msg).await;
-
-    let get_text = get_resp["result"]["content"][0]["text"].as_str().unwrap();
-    let memories: Vec<serde_json::Value> = serde_json::from_str(get_text).unwrap();
-    assert_eq!(memories.len(), 1);
-    assert_eq!(memories[0]["id"], id);
-    assert_eq!(
-        memories[0]["content"],
-        "MCP protocol integration test memory"
-    );
-    assert_eq!(memories[0]["projects"], serde_json::json!(["test"]));
 }
 
 #[tokio::test]

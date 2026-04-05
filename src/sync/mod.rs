@@ -8,8 +8,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
 use crate::db::Database;
-use crate::db::types::{ImportAction, ImportMemoryParams, Link, Tombstone};
-use crate::embedding::Embedder;
+use crate::db::types::{ImportAction, ImportMemoryParams, Link, ReconcileDecision, Tombstone};
 
 // ── Sync record types ────────────────────────────────────────────────
 
@@ -124,14 +123,26 @@ pub fn export(db: &Database, writer: &mut dyn Write, opts: &ExportOptions) -> Re
 /// Import memories, links, and tombstones from a JSONL reader.
 /// Expects plain-text JSONL — callers must handle gzip decompression if needed.
 /// See `background::import_from_file` for a file-based wrapper with auto-detection.
-pub fn import(
-    db: &Database,
-    embedder: &dyn Embedder,
-    reader: &mut dyn Read,
-) -> Result<ImportStats> {
+///
+/// Uses a multi-phase pipeline to enable batch embedding (significantly faster than
+/// per-record embedding). Phase 1 reconciliation filters skips before the expensive
+/// embedding step. Phase 3 uses atomic import_memory() which re-validates inside
+/// its transaction, so concurrent modifications are handled safely (at worst, a
+/// memory that was embedded turns out to be skipped — wasted compute, not data loss).
+pub fn import<F>(db: &Database, embed_batch: F, reader: &mut dyn Read) -> Result<ImportStats>
+where
+    F: Fn(&[&str]) -> Result<Vec<Vec<f32>>>,
+{
     let mut stats = ImportStats::default();
     let buf_reader = BufReader::new(reader);
+    let mut pending_memories: Vec<MemoryRecord> = Vec::new();
+    let mut deferred_links: Vec<Link> = Vec::new();
+    let mut deferred_tombstones: Vec<Tombstone> = Vec::new();
 
+    // Phase 1: Parse + reconcile (collect all records, defer writes)
+    // NOTE: Records are processed by type (memories, then links, then tombstones),
+    // not in stream order. This matches the export format which writes memories first.
+    // JSONL from other sources must follow the same ordering assumption.
     for (line_num, line_result) in buf_reader.lines().enumerate() {
         let line = line_result.with_context(|| format!("failed to read line {}", line_num + 1))?;
         let line = line.trim();
@@ -144,51 +155,84 @@ pub fn import(
 
         match record {
             SyncRecord::Memory(m) => {
-                let embedding = embedder
-                    .embed_documents(&[&m.content])?
-                    .into_iter()
-                    .next()
-                    .context("embedder returned no vectors")?;
-
-                let projects: Vec<&str> = m.projects.iter().map(|s| s.as_str()).collect();
-                let tags: Vec<&str> = m.tags.iter().map(|s| s.as_str()).collect();
-
-                let action = db.import_memory(&ImportMemoryParams {
-                    id: &m.id,
-                    content: &m.content,
-                    memory_type: m.memory_type.as_deref(),
-                    projects: &projects,
-                    tags: &tags,
-                    created_at: &m.created_at,
-                    updated_at: &m.updated_at,
-                    archived_at: m.archived_at.as_deref(),
-                    embedding: &embedding,
-                })?;
-
-                match action {
-                    ImportAction::Inserted => stats.memories_inserted += 1,
-                    ImportAction::Updated => stats.memories_updated += 1,
-                    ImportAction::Skipped => stats.memories_skipped += 1,
+                let max = db.max_content_size();
+                if m.content.len() > max {
+                    tracing::warn!(
+                        id = m.id,
+                        actual = m.content.len(),
+                        max,
+                        "skipping oversized memory during import"
+                    );
+                    stats.memories_skipped += 1;
+                    continue;
+                }
+                let decision = db.reconcile_memory(&m.id, &m.updated_at)?;
+                match decision {
+                    ReconcileDecision::Skip => stats.memories_skipped += 1,
+                    _ => pending_memories.push(m),
                 }
             }
-            SyncRecord::Link(l) => {
-                let action = db.import_link(&l)?;
+            SyncRecord::Link(l) => deferred_links.push(l),
+            SyncRecord::Tombstone(t) => deferred_tombstones.push(t),
+        }
+    }
 
-                match action {
-                    ImportAction::Inserted => stats.links_inserted += 1,
-                    ImportAction::Skipped => stats.links_skipped += 1,
-                    ImportAction::Updated => {} // links don't update
-                }
-            }
-            SyncRecord::Tombstone(t) => {
-                let applied = db.apply_tombstone(&t)?;
+    // Phase 2: Batch embed
+    if !pending_memories.is_empty() {
+        let texts: Vec<&str> = pending_memories
+            .iter()
+            .map(|m| m.content.as_str())
+            .collect();
+        let embeddings = embed_batch(&texts)?;
+        anyhow::ensure!(
+            embeddings.len() == texts.len(),
+            "embed_batch returned {} embeddings for {} inputs",
+            embeddings.len(),
+            texts.len()
+        );
 
-                if applied {
-                    stats.tombstones_applied += 1;
-                } else {
-                    stats.tombstones_skipped += 1;
-                }
+        // Phase 3: Write memories
+        for (m, embedding) in pending_memories.iter().zip(embeddings) {
+            let projects: Vec<&str> = m.projects.iter().map(|s| s.as_str()).collect();
+            let tags: Vec<&str> = m.tags.iter().map(|s| s.as_str()).collect();
+
+            let action = db.import_memory(&ImportMemoryParams {
+                id: &m.id,
+                content: &m.content,
+                memory_type: m.memory_type.as_deref(),
+                projects: &projects,
+                tags: &tags,
+                created_at: &m.created_at,
+                updated_at: &m.updated_at,
+                archived_at: m.archived_at.as_deref(),
+                embedding: &embedding,
+            })?;
+
+            match action {
+                ImportAction::Inserted => stats.memories_inserted += 1,
+                ImportAction::Updated => stats.memories_updated += 1,
+                ImportAction::Skipped => stats.memories_skipped += 1,
             }
+        }
+    }
+
+    // Phase 4: Write links (after memories exist)
+    for l in &deferred_links {
+        let action = db.import_link(l)?;
+        match action {
+            ImportAction::Inserted => stats.links_inserted += 1,
+            ImportAction::Skipped => stats.links_skipped += 1,
+            ImportAction::Updated => {}
+        }
+    }
+
+    // Phase 5: Apply tombstones (after memories and links exist)
+    for t in &deferred_tombstones {
+        let applied = db.apply_tombstone(t)?;
+        if applied {
+            stats.tombstones_applied += 1;
+        } else {
+            stats.tombstones_skipped += 1;
         }
     }
 
@@ -211,7 +255,220 @@ mod tests {
     }
 
     fn test_embedding(embedder: &MockEmbedder, text: &str) -> Vec<f32> {
-        embedder.embed_documents(&[text]).unwrap().remove(0)
+        embedder.embed_one(text).unwrap()
+    }
+
+    #[test]
+    fn import_with_closure_embeds_and_stores_correctly() {
+        let db_a = test_db();
+        let emb = mock_embedder();
+        let embedding = test_embedding(&emb, "closures are great");
+
+        let id = db_a
+            .store(&StoreParams {
+                content: "closures are great",
+                memory_type: Some("fact"),
+                projects: &["test"],
+                tags: &["rust"],
+                links: &[],
+                embedding: &embedding,
+            })
+            .unwrap();
+
+        // Export from DB A
+        let mut buf = Vec::new();
+        let opts = ExportOptions::default();
+        export(&db_a, &mut buf, &opts).unwrap();
+
+        // Import into fresh DB B using closure syntax
+        let db_b = test_db();
+        let stats = import(
+            &db_b,
+            |texts| emb.embed_documents(texts),
+            &mut buf.as_slice(),
+        )
+        .unwrap();
+        assert_eq!(stats.memories_inserted, 1);
+
+        // Verify the memory exists with correct content
+        let results = db_b.get(&[&id]).unwrap();
+        assert_eq!(results.len(), 1);
+        let m = &results[0].memory;
+        assert_eq!(m.content, "closures are great");
+        assert_eq!(m.memory_type.as_deref(), Some("fact"));
+        assert_eq!(m.projects, vec!["test"]);
+    }
+
+    #[test]
+    fn import_closure_error_propagates_as_import_failure() {
+        let db_a = test_db();
+        let emb = mock_embedder();
+        let embedding = test_embedding(&emb, "will fail on import");
+
+        db_a.store(&StoreParams {
+            content: "will fail on import",
+            memory_type: None,
+            projects: &[],
+            tags: &[],
+            links: &[],
+            embedding: &embedding,
+        })
+        .unwrap();
+
+        // Export from DB A
+        let mut buf = Vec::new();
+        let opts = ExportOptions::default();
+        export(&db_a, &mut buf, &opts).unwrap();
+
+        // Import with a closure that always fails
+        let db_b = test_db();
+        let result = import(
+            &db_b,
+            |_texts| Err(anyhow::anyhow!("embedding service unavailable")),
+            &mut buf.as_slice(),
+        );
+
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("embedding service unavailable"),
+            "error message should contain the closure's error, got: {err_msg}"
+        );
+    }
+
+    #[test]
+    fn import_closure_receives_exact_memory_content() {
+        use std::sync::{Arc, Mutex};
+
+        let db_a = test_db();
+        let emb = mock_embedder();
+        let embedding = test_embedding(&emb, "exact content check");
+
+        db_a.store(&StoreParams {
+            content: "exact content check",
+            memory_type: None,
+            projects: &[],
+            tags: &[],
+            links: &[],
+            embedding: &embedding,
+        })
+        .unwrap();
+
+        let mut buf = Vec::new();
+        let opts = ExportOptions::default();
+        export(&db_a, &mut buf, &opts).unwrap();
+
+        // Capture what the batch closure receives
+        let captured: Arc<Mutex<Vec<Vec<String>>>> = Arc::new(Mutex::new(Vec::new()));
+        let captured_clone = captured.clone();
+
+        let db_b = test_db();
+        import(
+            &db_b,
+            |texts| {
+                captured_clone
+                    .lock()
+                    .unwrap()
+                    .push(texts.iter().map(|t| t.to_string()).collect());
+                emb.embed_documents(texts)
+            },
+            &mut buf.as_slice(),
+        )
+        .unwrap();
+
+        let batches = captured.lock().unwrap();
+        assert_eq!(batches.len(), 1, "should be called once with one batch");
+        assert_eq!(batches[0].len(), 1);
+        assert_eq!(
+            batches[0][0], "exact content check",
+            "batch closure should receive the raw content string"
+        );
+    }
+
+    #[test]
+    fn batch_import_embeds_only_pending_memories() {
+        use std::sync::{Arc, Mutex};
+
+        let db_a = test_db();
+        let emb = mock_embedder();
+
+        // Store two memories in DB A.
+        let _id1 = db_a
+            .store(&StoreParams {
+                content: "memory one",
+                memory_type: Some("fact"),
+                projects: &["proj"],
+                tags: &["a"],
+                links: &[],
+                embedding: &test_embedding(&emb, "memory one"),
+            })
+            .unwrap();
+        let _id2 = db_a
+            .store(&StoreParams {
+                content: "memory two",
+                memory_type: Some("note"),
+                projects: &["proj"],
+                tags: &["b"],
+                links: &[],
+                embedding: &test_embedding(&emb, "memory two"),
+            })
+            .unwrap();
+
+        // Export from DB A.
+        let mut buf = Vec::new();
+        let opts = ExportOptions::default();
+        export(&db_a, &mut buf, &opts).unwrap();
+
+        // In DB B, pre-populate memory one with a NEWER timestamp (will be skipped on import).
+        let db_b = test_db();
+        let emb_pre = test_embedding(&emb, "memory one");
+        db_b.import_memory(&ImportMemoryParams {
+            id: &_id1,
+            content: "memory one",
+            memory_type: Some("fact"),
+            projects: &["proj"],
+            tags: &["a"],
+            created_at: "2099-01-01T00:00:00.000000Z",
+            updated_at: "2099-01-01T00:00:00.000000Z",
+            archived_at: None,
+            embedding: &emb_pre,
+        })
+        .unwrap();
+
+        // Import with a capturing closure.
+        let captured: Arc<Mutex<Vec<Vec<String>>>> = Arc::new(Mutex::new(Vec::new()));
+        let captured_clone = captured.clone();
+
+        let stats = import(
+            &db_b,
+            |texts| {
+                captured_clone
+                    .lock()
+                    .unwrap()
+                    .push(texts.iter().map(|t| t.to_string()).collect());
+                emb.embed_documents(texts)
+            },
+            &mut buf.as_slice(),
+        )
+        .unwrap();
+
+        // Verify stats: one skipped (memory one), one inserted (memory two).
+        assert_eq!(stats.memories_skipped, 1);
+        assert_eq!(stats.memories_inserted, 1);
+
+        // Verify batch closure was called once with only memory two's content.
+        let batches = captured.lock().unwrap();
+        assert_eq!(
+            batches.len(),
+            1,
+            "embed_batch should be called exactly once"
+        );
+        assert_eq!(
+            batches[0].len(),
+            1,
+            "batch should contain only the non-skipped memory"
+        );
+        assert_eq!(batches[0][0], "memory two");
     }
 
     #[test]
@@ -304,7 +561,12 @@ mod tests {
 
         // Import into fresh DB B
         let db_b = test_db();
-        let stats = import(&db_b, &emb, &mut buf.as_slice()).unwrap();
+        let stats = import(
+            &db_b,
+            |texts| emb.embed_documents(texts),
+            &mut buf.as_slice(),
+        )
+        .unwrap();
         assert_eq!(stats.memories_inserted, 1);
 
         // Verify the memory exists in DB B with matching fields
@@ -609,7 +871,12 @@ mod tests {
         );
         let jsonl_newer = jsonl_newer + "\n";
 
-        let stats = import(&db, &emb, &mut jsonl_newer.as_bytes()).unwrap();
+        let stats = import(
+            &db,
+            |texts| emb.embed_documents(texts),
+            &mut jsonl_newer.as_bytes(),
+        )
+        .unwrap();
         assert_eq!(stats.memories_updated, 1);
         assert_eq!(stats.memories_skipped, 0);
 
@@ -625,7 +892,12 @@ mod tests {
         );
         let jsonl_older = jsonl_older + "\n";
 
-        let stats2 = import(&db, &emb, &mut jsonl_older.as_bytes()).unwrap();
+        let stats2 = import(
+            &db,
+            |texts| emb.embed_documents(texts),
+            &mut jsonl_older.as_bytes(),
+        )
+        .unwrap();
         assert_eq!(stats2.memories_skipped, 1);
         assert_eq!(stats2.memories_updated, 0);
 
@@ -641,7 +913,12 @@ mod tests {
         );
         let jsonl_tie = jsonl_tie + "\n";
 
-        let stats3 = import(&db, &emb, &mut jsonl_tie.as_bytes()).unwrap();
+        let stats3 = import(
+            &db,
+            |texts| emb.embed_documents(texts),
+            &mut jsonl_tie.as_bytes(),
+        )
+        .unwrap();
         assert_eq!(stats3.memories_skipped, 1);
 
         // Content should not have changed.
@@ -678,7 +955,12 @@ mod tests {
         );
         let jsonl = jsonl + "\n";
 
-        let stats = import(&db, &emb, &mut jsonl.as_bytes()).unwrap();
+        let stats = import(
+            &db,
+            |texts| emb.embed_documents(texts),
+            &mut jsonl.as_bytes(),
+        )
+        .unwrap();
         assert_eq!(stats.tombstones_applied, 1);
 
         // Verify the memory is now archived.
@@ -686,7 +968,12 @@ mod tests {
         assert!(after[0].memory.archived_at.is_some());
 
         // Import same tombstone again — should be skipped (already archived).
-        let stats2 = import(&db, &emb, &mut jsonl.as_bytes()).unwrap();
+        let stats2 = import(
+            &db,
+            |texts| emb.embed_documents(texts),
+            &mut jsonl.as_bytes(),
+        )
+        .unwrap();
         assert_eq!(stats2.tombstones_skipped, 1);
         assert_eq!(stats2.tombstones_applied, 0);
     }
@@ -727,7 +1014,7 @@ mod tests {
         // Import with gzip decompression.
         let db_b = test_db();
         let mut gz_reader = GzDecoder::new(compressed.as_slice());
-        let stats = import(&db_b, &emb, &mut gz_reader).unwrap();
+        let stats = import(&db_b, |texts| emb.embed_documents(texts), &mut gz_reader).unwrap();
         assert_eq!(stats.memories_inserted, 1);
 
         // Verify data integrity.
@@ -803,7 +1090,12 @@ mod tests {
 
         // Import into fresh DB B.
         let db_b = test_db();
-        let stats = import(&db_b, &emb, &mut buf.as_slice()).unwrap();
+        let stats = import(
+            &db_b,
+            |texts| emb.embed_documents(texts),
+            &mut buf.as_slice(),
+        )
+        .unwrap();
         assert_eq!(stats.memories_inserted, 2);
         assert_eq!(stats.links_inserted, 1);
         assert_eq!(stats.tombstones_applied, 0); // memory already imported as archived
@@ -824,5 +1116,51 @@ mod tests {
         assert!(m2[0].memory.archived_at.is_none());
         assert_eq!(m2[0].outgoing_links.len(), 1);
         assert_eq!(m2[0].outgoing_links[0].target_id, id1);
+    }
+
+    #[test]
+    fn import_errors_on_embedding_count_mismatch() {
+        let db_a = test_db();
+        let emb = mock_embedder();
+
+        // Store 2 memories in DB A.
+        db_a.store(&StoreParams {
+            content: "memory alpha",
+            memory_type: None,
+            projects: &[],
+            tags: &[],
+            links: &[],
+            embedding: &test_embedding(&emb, "memory alpha"),
+        })
+        .unwrap();
+        db_a.store(&StoreParams {
+            content: "memory beta",
+            memory_type: None,
+            projects: &[],
+            tags: &[],
+            links: &[],
+            embedding: &test_embedding(&emb, "memory beta"),
+        })
+        .unwrap();
+
+        // Export from DB A.
+        let mut buf = Vec::new();
+        let opts = ExportOptions::default();
+        export(&db_a, &mut buf, &opts).unwrap();
+
+        // Import into fresh DB B with a closure that returns fewer embeddings than inputs.
+        let db_b = test_db();
+        let result = import(
+            &db_b,
+            |_texts| Ok(vec![vec![0.0; 768]]), // Returns 1 embedding for 2 inputs
+            &mut buf.as_slice(),
+        );
+
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("embeddings"),
+            "error should mention embeddings, got: {err_msg}"
+        );
     }
 }

@@ -107,7 +107,7 @@ mod tests {
 
     use crate::db::{Database, DbConfig};
     use crate::embedding::MockEmbedder;
-    use crate::mcp::ServerConfig;
+    use crate::service::{MemoryService, ServiceConfig};
     use crate::web::AppState;
 
     use super::*;
@@ -117,13 +117,15 @@ mod tests {
     async fn start_test_server() -> (String, String) {
         let db = Database::open_in_memory(&DbConfig::default()).unwrap();
         let auth_token = "test-relay-token".to_string();
+        let service = MemoryService::new(
+            Arc::new(Mutex::new(db)),
+            Arc::new(MockEmbedder::new(768)),
+            None,
+            ServiceConfig::default(),
+        );
         let state = AppState {
-            db: Arc::new(Mutex::new(db)),
-            embedder: Arc::new(MockEmbedder::new(768)),
-            reranker: None,
-            reranker_threshold: 0.0,
+            service,
             auth_token: auth_token.clone(),
-            mcp_config: ServerConfig::default(),
         };
         let app = crate::web::app_router(state);
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();

@@ -77,6 +77,8 @@ Rust 2024 edition. Key dependencies: `rusqlite`, `fastembed`, `sqlite-vec` (stat
 
 This project uses **nibs** for issue tracking. Use `nibs list`, `nibs show <id>`, `nibs create`. See `.nibs/` directory. Always use nibs instead of TodoWrite for work tracking.
 
+**Important**: `.nibs/` is a **separate git repository** (gitignored from this repo). Commit and push nibs changes from within `.nibs/`, not from the project root.
+
 **Milestone requirement**: Every new nib must have a milestone as its parent. Use `--parent <milestone-id>` when creating. The current milestone is **1.0.0 Alpha** (`erin-jal4`) — use it as the default parent unless a different milestone is specified.
 
 ## When Executing Plans

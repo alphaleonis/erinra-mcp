@@ -432,6 +432,14 @@ pub enum ImportAction {
     Skipped,
 }
 
+/// Decision from reconciliation: what to do with an incoming memory during import.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReconcileDecision {
+    Insert,
+    Update,
+    Skip,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

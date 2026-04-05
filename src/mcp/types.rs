@@ -44,39 +44,6 @@ pub(crate) fn is_false(b: &bool) -> bool {
     !b
 }
 
-// ── Configuration ───────────────────────────────────────────────────────
-
-/// Server-level configuration for MCP tool behavior.
-#[derive(Clone)]
-pub struct ServerConfig {
-    /// Number of similar memories returned by `store` and `merge`.
-    pub similar_limit: usize,
-    /// Minimum cosine similarity to include in similar results.
-    pub similar_threshold: f64,
-    /// Default content truncation for store/search/list responses.
-    pub content_max_length: u32,
-    /// RRF constant for hybrid search result merging.
-    pub rrf_k: u32,
-    /// Maximum content size in bytes (enforced on store/update).
-    pub max_content_size: usize,
-    /// Minimum reranker score to include in search results.
-    pub reranker_threshold: f64,
-}
-
-impl Default for ServerConfig {
-    fn default() -> Self {
-        let store = crate::config::StoreConfig::default();
-        Self {
-            similar_limit: store.similar_limit,
-            similar_threshold: store.similar_threshold,
-            content_max_length: store.content_max_length,
-            rrf_k: crate::config::SearchConfig::default().rrf_k,
-            max_content_size: store.max_content_size,
-            reranker_threshold: crate::config::RerankerConfig::default().threshold,
-        }
-    }
-}
-
 // ── Tool input types ────────────────────────────────────────────────────
 
 #[derive(Deserialize, JsonSchema)]
@@ -446,4 +413,339 @@ pub(crate) struct ContextResponse {
     /// True if some results were omitted due to content_budget or limit.
     /// The first result is always included even if it alone exceeds the budget.
     pub truncated: bool,
+}
+
+// ── Service response conversions ──────────────────────────────────────
+
+impl From<crate::service::StoredMemory> for StoreResponse {
+    fn from(sm: crate::service::StoredMemory) -> Self {
+        Self {
+            id: sm.id,
+            similar: sm
+                .similar
+                .into_iter()
+                .map(|(mem, score)| SimilarMemoryResponse {
+                    id: mem.id,
+                    content: mem.content,
+                    projects: mem.projects,
+                    memory_type: mem.memory_type,
+                    tags: mem.tags,
+                    similarity: score,
+                    created_at: mem.created_at,
+                    truncated: mem.truncated,
+                })
+                .collect(),
+        }
+    }
+}
+
+impl From<crate::service::MergedMemory> for MergeResponse {
+    fn from(mm: crate::service::MergedMemory) -> Self {
+        Self {
+            id: mm.id,
+            archived: mm.archived,
+            similar: mm
+                .similar
+                .into_iter()
+                .map(|(mem, score)| SimilarMemoryResponse {
+                    id: mem.id,
+                    content: mem.content,
+                    projects: mem.projects,
+                    memory_type: mem.memory_type,
+                    tags: mem.tags,
+                    similarity: score,
+                    created_at: mem.created_at,
+                    truncated: mem.truncated,
+                })
+                .collect(),
+        }
+    }
+}
+
+impl From<crate::service::ContextResult> for ContextResponse {
+    fn from(cr: crate::service::ContextResult) -> Self {
+        Self {
+            memories: cr
+                .hits
+                .into_iter()
+                .map(|hit| ContextHit {
+                    id: hit.memory.id,
+                    content: hit.memory.content,
+                    projects: hit.memory.projects,
+                    memory_type: hit.memory.memory_type,
+                    tags: hit.memory.tags,
+                    score: hit.score,
+                    query_index: hit.query_index,
+                    created_at: hit.memory.created_at,
+                    truncated: hit.memory.truncated,
+                })
+                .collect(),
+            taxonomy: cr.taxonomy,
+            truncated: cr.truncated,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::service::{ContextHitInner, ContextResult, MergedMemory, StoredMemory};
+
+    fn sample_memory(id: &str, content: &str) -> Memory {
+        Memory {
+            id: id.to_string(),
+            content: content.to_string(),
+            memory_type: Some("pattern".to_string()),
+            projects: vec!["proj-a".to_string()],
+            tags: vec!["rust".to_string()],
+            created_at: "2025-06-15T00:00:00.000Z".to_string(),
+            updated_at: "2025-06-15T00:00:00.000Z".to_string(),
+            archived_at: None,
+            last_accessed_at: None,
+            access_count: 0,
+            truncated: false,
+        }
+    }
+
+    // ── Behavior 1: StoreInput → StoreRequest + StoredMemory → StoreResponse ──
+
+    #[test]
+    fn store_input_converts_to_store_request() {
+        use crate::service::StoreRequest;
+
+        let input = StoreInput {
+            content: "some content".to_string(),
+            projects: vec!["proj-a".to_string()],
+            memory_type: Some("pattern".to_string()),
+            tags: vec!["rust".to_string()],
+            links: vec![
+                StoreLinkInput {
+                    target_id: "target-1".to_string(),
+                    relation: "related_to".to_string(),
+                },
+                StoreLinkInput {
+                    target_id: "target-2".to_string(),
+                    relation: "caused_by".to_string(),
+                },
+            ],
+        };
+
+        let req = StoreRequest::from(input);
+        assert_eq!(req.content, "some content");
+        assert_eq!(req.projects, vec!["proj-a"]);
+        assert_eq!(req.memory_type, Some("pattern".to_string()));
+        assert_eq!(req.tags, vec!["rust"]);
+        assert_eq!(
+            req.links,
+            vec![
+                ("target-1".to_string(), "related_to".to_string()),
+                ("target-2".to_string(), "caused_by".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn stored_memory_converts_to_store_response() {
+        let sm = StoredMemory {
+            id: "new-id".to_string(),
+            similar: vec![
+                (sample_memory("sim-1", "similar content 1"), 0.92),
+                (sample_memory("sim-2", "similar content 2"), 0.85),
+            ],
+        };
+
+        let resp = StoreResponse::from(sm);
+        assert_eq!(resp.id, "new-id");
+        assert_eq!(resp.similar.len(), 2);
+        assert_eq!(resp.similar[0].id, "sim-1");
+        assert_eq!(resp.similar[0].content, "similar content 1");
+        assert_eq!(resp.similar[0].similarity, 0.92);
+        assert_eq!(resp.similar[0].projects, vec!["proj-a"]);
+        assert_eq!(resp.similar[0].memory_type, Some("pattern".to_string()));
+        assert_eq!(resp.similar[0].tags, vec!["rust"]);
+        assert_eq!(resp.similar[0].created_at, "2025-06-15T00:00:00.000Z");
+        assert!(!resp.similar[0].truncated);
+    }
+
+    #[test]
+    fn stored_memory_with_truncated_similar() {
+        let mut mem = sample_memory("sim-1", "truncated");
+        mem.truncated = true;
+
+        let sm = StoredMemory {
+            id: "new-id".to_string(),
+            similar: vec![(mem, 0.90)],
+        };
+
+        let resp = StoreResponse::from(sm);
+        assert!(resp.similar[0].truncated);
+    }
+
+    // ── Behavior 4: UpdateInput → UpdateRequest ──
+
+    #[test]
+    fn update_input_converts_to_update_request() {
+        use crate::db::types::FieldUpdate;
+        use crate::service::UpdateRequest;
+
+        // Test: memory_type Some(Some("decision")) → Set("decision")
+        let input = UpdateInput {
+            id: "mem-1".to_string(),
+            content: Some("new content".to_string()),
+            memory_type: Some(Some("decision".to_string())),
+            projects: Some(vec!["proj-b".to_string()]),
+            tags: Some(vec!["go".to_string()]),
+        };
+
+        let req = UpdateRequest::from(input);
+        assert_eq!(req.id, "mem-1");
+        assert_eq!(req.content, Some("new content".to_string()));
+        assert_eq!(req.memory_type, FieldUpdate::Set("decision".to_string()));
+        assert_eq!(req.projects, Some(vec!["proj-b".to_string()]));
+        assert_eq!(req.tags, Some(vec!["go".to_string()]));
+    }
+
+    #[test]
+    fn update_input_none_type_is_no_change() {
+        use crate::db::types::FieldUpdate;
+        use crate::service::UpdateRequest;
+
+        let input = UpdateInput {
+            id: "mem-1".to_string(),
+            content: None,
+            memory_type: None, // absent → NoChange
+            projects: None,
+            tags: None,
+        };
+
+        let req = UpdateRequest::from(input);
+        assert_eq!(req.memory_type, FieldUpdate::NoChange);
+    }
+
+    #[test]
+    fn update_input_some_none_type_is_clear() {
+        use crate::db::types::FieldUpdate;
+        use crate::service::UpdateRequest;
+
+        let input = UpdateInput {
+            id: "mem-1".to_string(),
+            content: None,
+            memory_type: Some(None), // explicit null → Clear
+            projects: None,
+            tags: None,
+        };
+
+        let req = UpdateRequest::from(input);
+        assert_eq!(req.memory_type, FieldUpdate::Clear);
+    }
+
+    // ── Behavior 5: MergeInput → MergeRequest + MergedMemory → MergeResponse ──
+
+    #[test]
+    fn merge_input_converts_to_merge_request() {
+        use crate::service::MergeRequest;
+
+        let input = MergeInput {
+            source_ids: vec!["id-1".to_string(), "id-2".to_string()],
+            content: "merged content".to_string(),
+            projects: vec!["proj-a".to_string()],
+            memory_type: Some("decision".to_string()),
+            tags: vec!["rust".to_string()],
+        };
+
+        let req = MergeRequest::from(input);
+        assert_eq!(req.source_ids, vec!["id-1", "id-2"]);
+        assert_eq!(req.content, "merged content");
+        assert_eq!(req.projects, vec!["proj-a"]);
+        assert_eq!(req.memory_type, Some("decision".to_string()));
+        assert_eq!(req.tags, vec!["rust"]);
+    }
+
+    #[test]
+    fn merged_memory_converts_to_merge_response() {
+        let mm = MergedMemory {
+            id: "merged-id".to_string(),
+            archived: vec!["src-1".to_string(), "src-2".to_string()],
+            similar: vec![(sample_memory("sim-1", "similar"), 0.88)],
+        };
+
+        let resp = MergeResponse::from(mm);
+        assert_eq!(resp.id, "merged-id");
+        assert_eq!(resp.archived, vec!["src-1", "src-2"]);
+        assert_eq!(resp.similar.len(), 1);
+        assert_eq!(resp.similar[0].id, "sim-1");
+        assert_eq!(resp.similar[0].similarity, 0.88);
+    }
+
+    // ── Behavior 7: ContextInput → ContextRequest ──
+
+    #[test]
+    fn context_input_converts_to_context_request() {
+        use crate::service::ContextRequest;
+
+        let input = ContextInput {
+            queries: vec!["q1".to_string(), "q2".to_string()],
+            projects: Some(vec!["proj-a".to_string()]),
+            memory_type: Some("pattern".to_string()),
+            tags: Some(vec!["rust".to_string()]),
+            include_global: Some(false),
+            include_taxonomy: Some(true),
+            content_budget: Some(5000),
+            limit: Some(20),
+        };
+
+        let req = ContextRequest::from(input);
+        assert_eq!(req.queries, vec!["q1", "q2"]);
+        assert_eq!(req.projects, Some(vec!["proj-a".to_string()]));
+        assert_eq!(req.memory_type, Some("pattern".to_string()));
+        assert_eq!(req.tags, Some(vec!["rust".to_string()]));
+        assert!(!req.include_global);
+        assert!(req.include_taxonomy);
+        assert_eq!(req.content_budget, 5000);
+        assert_eq!(req.limit, 20);
+    }
+
+    #[test]
+    fn context_input_defaults() {
+        use crate::service::ContextRequest;
+
+        let input = ContextInput {
+            queries: vec!["q1".to_string()],
+            projects: None,
+            memory_type: None,
+            tags: None,
+            include_global: None,   // defaults to true
+            include_taxonomy: None, // defaults to false
+            content_budget: None,   // defaults to 2000
+            limit: None,            // defaults to 10
+        };
+
+        let req = ContextRequest::from(input);
+        assert!(req.include_global);
+        assert!(!req.include_taxonomy);
+        assert_eq!(req.content_budget, 2000);
+        assert_eq!(req.limit, 10);
+    }
+
+    #[test]
+    fn context_result_converts_to_context_response() {
+        let cr = ContextResult {
+            hits: vec![ContextHitInner {
+                memory: sample_memory("hit-1", "context content"),
+                score: 0.95,
+                query_index: 0,
+            }],
+            taxonomy: None,
+            truncated: true,
+        };
+
+        let resp = ContextResponse::from(cr);
+        assert_eq!(resp.memories.len(), 1);
+        assert_eq!(resp.memories[0].id, "hit-1");
+        assert_eq!(resp.memories[0].content, "context content");
+        assert_eq!(resp.memories[0].score, 0.95);
+        assert_eq!(resp.memories[0].query_index, 0);
+        assert!(resp.truncated);
+        assert!(resp.taxonomy.is_none());
+    }
 }

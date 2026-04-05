@@ -6,6 +6,7 @@ use std::sync::{Arc, Mutex};
 use anyhow::{Context, Result};
 
 use erinra::embedding::{Embedder, Reranker};
+use erinra::service::{MemoryService, ServiceConfig};
 use erinra::{config, db, embedding, mcp, relay, sync, web};
 
 /// Load the reranker model if enabled in config. Returns `None` when disabled.
@@ -159,14 +160,7 @@ pub async fn serve(
         None
     };
 
-    let server_config = mcp::ServerConfig {
-        similar_limit: config.store.similar_limit,
-        similar_threshold: config.store.similar_threshold,
-        content_max_length: config.store.content_max_length,
-        rrf_k: config.search.rrf_k,
-        max_content_size: config.store.max_content_size,
-        reranker_threshold: config.reranker.threshold,
-    };
+    let service = MemoryService::new(db, embedder, reranker, ServiceConfig::from(&config));
 
     // Optionally start the web dashboard daemon.
     let mut daemon_started = false;
@@ -186,7 +180,7 @@ pub async fn serve(
     }
 
     // Run MCP server with signal handling for graceful shutdown
-    let mcp_future = mcp::serve(db, embedder, reranker, server_config);
+    let mcp_future = mcp::serve(service);
 
     #[cfg(unix)]
     {
@@ -347,11 +341,13 @@ pub async fn import(data_dir: &Path, config: &config::Config, input: &Path) -> R
         n == 2 && magic[0] == 0x1f && magic[1] == 0x8b
     };
 
+    let embed_batch = |texts: &[&str]| embedder.embed_documents(texts);
+
     let stats = if is_gzip {
         let mut gz_reader = flate2::read::GzDecoder::new(buf_reader);
-        sync::import(&db, &embedder, &mut gz_reader)?
+        sync::import(&db, embed_batch, &mut gz_reader)?
     } else {
-        sync::import(&db, &embedder, &mut buf_reader)?
+        sync::import(&db, embed_batch, &mut buf_reader)?
     };
 
     eprintln!(
@@ -818,28 +814,17 @@ pub async fn run_daemon(
         .parse()
         .with_context(|| format!("invalid bind address: {bind}:{port}"))?;
 
-    let mcp_config = mcp::ServerConfig {
-        similar_limit: config.store.similar_limit,
-        similar_threshold: config.store.similar_threshold,
-        content_max_length: config.store.content_max_length,
-        rrf_k: config.search.rrf_k,
-        max_content_size: config.store.max_content_size,
-        reranker_threshold: config.reranker.threshold,
-    };
+    let service = MemoryService::new(
+        Arc::new(Mutex::new(db)),
+        embedder,
+        reranker,
+        ServiceConfig::from(config),
+    );
 
     let opts = web::ServeOptions {
         open_browser: false,
     };
-    let server = web::serve(
-        db,
-        embedder,
-        reranker,
-        config.reranker.threshold,
-        auth_token,
-        mcp_config,
-        addr,
-        opts,
-    );
+    let server = web::serve(service, auth_token, addr, opts);
 
     let data_dir_owned = data_dir.to_path_buf();
 

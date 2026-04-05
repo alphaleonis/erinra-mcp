@@ -1,9 +1,5 @@
 //! MCP tool handler implementations.
 
-use std::collections::HashMap;
-use std::sync::Arc;
-
-use crate::db::error::DbError;
 use crate::db::types::*;
 use rmcp::handler::server::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
@@ -11,44 +7,95 @@ use rmcp::model::*;
 use rmcp::{ErrorData, tool, tool_router};
 
 use super::types::*;
-use super::{ErinraServer, internal_error, json_result, strs, strs_owned, tool_error};
+use super::{ErinraServer, internal_error, json_result, tool_error};
 
-/// Unwrap a DB operation result. User-facing errors (not_found, already_archived,
-/// etc.) become tool-level errors visible to the LLM. Internal errors become
-/// JSON-RPC protocol errors.
-macro_rules! db {
+/// Route a `ServiceResult` to MCP handler outcomes:
+/// - `Ok(v)` → unwrapped value
+/// - `InvalidInput` → tool_error (visible to LLM)
+/// - `Db` user-facing (NotFound, AlreadyArchived, etc.) → tool_error
+/// - `Db` internal, `Embedding`, `TaskJoin` → JSON-RPC protocol error
+macro_rules! svc_result {
     ($result:expr) => {
         match $result {
             Ok(v) => v,
-            Err(e) if e.is_user_facing() => return tool_error(e.to_string()),
-            Err(e) => {
-                return Err(ErrorData::internal_error(
-                    format!("database error: {e}"),
-                    None,
-                ))
+            Err(crate::service::ServiceError::InvalidInput(msg)) => return tool_error(msg),
+            Err(crate::service::ServiceError::Db(e)) if e.is_user_facing() => {
+                return tool_error(e.to_string())
             }
+            Err(e) => return Err(internal_error(e.into())),
         }
     };
 }
 
-/// Filter similar memories by threshold and convert to response type.
-pub(crate) fn filter_similar(
-    raw: Vec<(Memory, f64)>,
-    threshold: f64,
-) -> Vec<SimilarMemoryResponse> {
-    raw.into_iter()
-        .filter(|(_, sim)| *sim >= threshold)
-        .map(|(mem, sim)| SimilarMemoryResponse {
-            id: mem.id,
-            content: mem.content,
-            projects: mem.projects,
-            memory_type: mem.memory_type,
-            tags: mem.tags,
-            similarity: sim,
-            created_at: mem.created_at,
-            truncated: mem.truncated,
-        })
-        .collect()
+/// Non-macro version for unit testing: maps `ServiceError` to the same
+/// handler outcome as `svc_result!` but returns a `Result` instead of
+/// using early returns.
+#[cfg(test)]
+fn handle_service_error(
+    err: crate::service::ServiceError,
+) -> Result<(), Result<CallToolResult, ErrorData>> {
+    match err {
+        crate::service::ServiceError::InvalidInput(msg) => Err(tool_error(msg)),
+        crate::service::ServiceError::Db(e) if e.is_user_facing() => Err(tool_error(e.to_string())),
+        e => Err(Err(internal_error(e.into()))),
+    }
+}
+
+// ── Request conversions (mcp → service) ─────────────────────────────────
+
+impl From<StoreInput> for crate::service::StoreRequest {
+    fn from(input: StoreInput) -> Self {
+        Self {
+            content: input.content,
+            memory_type: input.memory_type,
+            projects: input.projects,
+            tags: input.tags,
+            links: input
+                .links
+                .into_iter()
+                .map(|l| (l.target_id, l.relation))
+                .collect(),
+        }
+    }
+}
+
+impl From<UpdateInput> for crate::service::UpdateRequest {
+    fn from(input: UpdateInput) -> Self {
+        Self {
+            id: input.id,
+            content: input.content,
+            memory_type: FieldUpdate::from(input.memory_type),
+            projects: input.projects,
+            tags: input.tags,
+        }
+    }
+}
+
+impl From<MergeInput> for crate::service::MergeRequest {
+    fn from(input: MergeInput) -> Self {
+        Self {
+            source_ids: input.source_ids,
+            content: input.content,
+            memory_type: input.memory_type,
+            projects: input.projects,
+            tags: input.tags,
+        }
+    }
+}
+
+impl From<ContextInput> for crate::service::ContextRequest {
+    fn from(input: ContextInput) -> Self {
+        Self {
+            queries: input.queries,
+            projects: input.projects,
+            memory_type: input.memory_type,
+            tags: input.tags,
+            include_global: input.include_global.unwrap_or(true),
+            include_taxonomy: input.include_taxonomy.unwrap_or(false),
+            content_budget: input.content_budget.unwrap_or(2000) as usize,
+            limit: input.limit.unwrap_or(10) as usize,
+        }
+    }
 }
 
 // ── Tool implementations ────────────────────────────────────────────────
@@ -65,60 +112,11 @@ impl ErinraServer {
         &self,
         params: Parameters<StoreInput>,
     ) -> Result<CallToolResult, ErrorData> {
-        let p = params.0;
-
-        // Pre-check: reject before expensive embedding computation.
-        if p.content.len() > self.config.max_content_size {
-            return tool_error(format!(
-                "content is {} bytes, max is {}",
-                p.content.len(),
-                self.config.max_content_size
-            ));
-        }
-
-        // Embed content (CPU-bound ONNX inference — run off the async runtime).
-        let embedding = self.embed_content(&p.content).await?;
-
-        // DB operations (synchronous I/O — run off the async runtime).
-        let db = Arc::clone(&self.db);
-        let config = Arc::clone(&self.config);
-        let (id, similar_raw) = db!(tokio::task::spawn_blocking(move || {
-            let projects_ref = strs_owned(&p.projects);
-            let tags_ref = strs_owned(&p.tags);
-            let links_ref: Vec<(&str, &str)> = p
-                .links
-                .iter()
-                .map(|l| (l.target_id.as_str(), l.relation.as_str()))
-                .collect();
-
-            let db = db.lock().expect("db mutex poisoned");
-
-            let id = db.store(&StoreParams {
-                content: &p.content,
-                memory_type: p.memory_type.as_deref(),
-                projects: &projects_ref,
-                tags: &tags_ref,
-                links: &links_ref,
-                embedding: &embedding,
-            })?;
-
-            let similar_raw = db.find_similar(
-                &embedding,
-                config.similar_limit,
-                &[&id],
-                Some(config.content_max_length),
-            )?;
-
-            Ok::<_, DbError>((id, similar_raw))
-        })
-        .await
-        .map_err(|e| internal_error(e.into()))?);
-
-        tracing::info!(tool = "store", id = %id, "memory stored");
+        let req = crate::service::StoreRequest::from(params.0);
+        let result = svc_result!(self.service.store(req).await);
+        tracing::info!(tool = "store", id = %result.id, "memory stored");
         self.refresh_instructions();
-        let similar = filter_similar(similar_raw, self.config.similar_threshold);
-        let response = StoreResponse { id, similar };
-        json_result(&response)
+        json_result(&StoreResponse::from(result))
     }
 
     // ── update ───────────────────────────────────────────────────────────
@@ -131,47 +129,8 @@ impl ErinraServer {
         &self,
         params: Parameters<UpdateInput>,
     ) -> Result<CallToolResult, ErrorData> {
-        let p = params.0;
-
-        // Pre-check: reject before expensive embedding computation.
-        if let Some(ref content) = p.content
-            && content.len() > self.config.max_content_size
-        {
-            return tool_error(format!(
-                "content is {} bytes, max is {}",
-                content.len(),
-                self.config.max_content_size
-            ));
-        }
-
-        // Re-embed if content changed (CPU-bound — run off the async runtime).
-        let embedding = match &p.content {
-            Some(content) => Some(self.embed_content(content).await?),
-            None => None,
-        };
-
-        // DB operation (synchronous I/O — run off the async runtime).
-        let db = Arc::clone(&self.db);
-        let memory_type_update = FieldUpdate::from(p.memory_type);
-        let result = db!(tokio::task::spawn_blocking(move || {
-            let projects_ref = strs(&p.projects);
-            let tags_ref = strs(&p.tags);
-
-            let db = db.lock().expect("db mutex poisoned");
-            db.update(
-                &p.id,
-                &crate::db::types::UpdateParams {
-                    content: p.content.as_deref(),
-                    memory_type: memory_type_update.as_deref(),
-                    projects: projects_ref.as_deref(),
-                    tags: tags_ref.as_deref(),
-                    embedding: embedding.as_deref(),
-                },
-            )
-        })
-        .await
-        .map_err(|e| internal_error(e.into()))?);
-
+        let req = crate::service::UpdateRequest::from(params.0);
+        let result = svc_result!(self.service.update(req).await);
         tracing::info!(tool = "update", id = %result.id, "memory updated");
         self.refresh_instructions();
         json_result(&result)
@@ -186,15 +145,7 @@ impl ErinraServer {
         &self,
         params: Parameters<ArchiveInput>,
     ) -> Result<CallToolResult, ErrorData> {
-        let id = params.0.id;
-        let db = Arc::clone(&self.db);
-        let result = db!(tokio::task::spawn_blocking(move || {
-            let db = db.lock().expect("db mutex poisoned");
-            db.archive(&id)
-        })
-        .await
-        .map_err(|e| internal_error(e.into()))?);
-
+        let result = svc_result!(self.service.archive(&params.0.id).await);
         tracing::info!(tool = "archive", id = %result.id, "memory archived");
         self.refresh_instructions();
         json_result(&result)
@@ -210,73 +161,11 @@ impl ErinraServer {
         &self,
         params: Parameters<MergeInput>,
     ) -> Result<CallToolResult, ErrorData> {
-        let p = params.0;
-
-        if p.source_ids.is_empty() {
-            return tool_error("source_ids must not be empty");
-        }
-        if p.source_ids.len() > 20 {
-            return tool_error(format!(
-                "too many source_ids ({}, max 20)",
-                p.source_ids.len()
-            ));
-        }
-        // Pre-check: reject before expensive embedding computation.
-        if p.content.len() > self.config.max_content_size {
-            return tool_error(format!(
-                "content is {} bytes, max is {}",
-                p.content.len(),
-                self.config.max_content_size
-            ));
-        }
-
-        // Embed the merged content (CPU-bound — run off the async runtime).
-        let embedding = self.embed_content(&p.content).await?;
-
-        // DB operations (synchronous I/O — run off the async runtime).
-        let db = Arc::clone(&self.db);
-        let config = Arc::clone(&self.config);
-        let (merge_result, similar_raw) = db!(tokio::task::spawn_blocking(move || {
-            let source_ids_ref = strs_owned(&p.source_ids);
-            let projects_ref = strs_owned(&p.projects);
-            let tags_ref = strs_owned(&p.tags);
-
-            let db = db.lock().expect("db mutex poisoned");
-            let result = db.merge(&MergeParams {
-                source_ids: &source_ids_ref,
-                content: &p.content,
-                memory_type: p.memory_type.as_deref(),
-                projects: &projects_ref,
-                tags: &tags_ref,
-                embedding: &embedding,
-            })?;
-
-            // Find similar to the merged memory.
-            let mut exclude: Vec<&str> = vec![result.id.as_str()];
-            for id in &result.archived {
-                exclude.push(id.as_str());
-            }
-            let similar_raw = db.find_similar(
-                &embedding,
-                config.similar_limit,
-                &exclude,
-                Some(config.content_max_length),
-            )?;
-
-            Ok::<_, DbError>((result, similar_raw))
-        })
-        .await
-        .map_err(|e| internal_error(e.into()))?);
-
-        tracing::info!(tool = "merge", id = %merge_result.id, sources = ?merge_result.archived, "memories merged");
+        let req = crate::service::MergeRequest::from(params.0);
+        let result = svc_result!(self.service.merge(req).await);
+        tracing::info!(tool = "merge", id = %result.id, sources = ?result.archived, "memories merged");
         self.refresh_instructions();
-        let similar = filter_similar(similar_raw, self.config.similar_threshold);
-        let response = MergeResponse {
-            id: merge_result.id,
-            archived: merge_result.archived,
-            similar,
-        };
-        json_result(&response)
+        json_result(&MergeResponse::from(result))
     }
 
     // ── link ─────────────────────────────────────────────────────────────
@@ -289,14 +178,11 @@ impl ErinraServer {
         params: Parameters<LinkInput>,
     ) -> Result<CallToolResult, ErrorData> {
         let p = params.0;
-        let db = Arc::clone(&self.db);
-        let link = db!(tokio::task::spawn_blocking(move || {
-            let db = db.lock().expect("db mutex poisoned");
-            db.link(&p.source_id, &p.target_id, &p.relation)
-        })
-        .await
-        .map_err(|e| internal_error(e.into()))?);
-
+        let link = svc_result!(
+            self.service
+                .link(&p.source_id, &p.target_id, &p.relation)
+                .await
+        );
         tracing::info!(tool = "link", id = %link.id, source = %link.source_id, target = %link.target_id, relation = %link.relation, "link created");
         json_result(&link)
     }
@@ -312,7 +198,7 @@ impl ErinraServer {
     ) -> Result<CallToolResult, ErrorData> {
         let p = params.0;
 
-        // Validate inputs before spawning blocking work.
+        // Validate inputs before calling service.
         if p.id.is_none()
             && (p.source_id.is_none() || p.target_id.is_none() || p.relation.is_none())
         {
@@ -321,21 +207,19 @@ impl ErinraServer {
             );
         }
 
-        let db = Arc::clone(&self.db);
-        let removed = db!(tokio::task::spawn_blocking(move || {
-            let db = db.lock().expect("db mutex poisoned");
-            if let Some(id) = &p.id {
-                db.unlink_by_id(id)
-            } else {
-                db.unlink_by_endpoints(
-                    p.source_id.as_deref().unwrap(),
-                    p.target_id.as_deref().unwrap(),
-                    p.relation.as_deref().unwrap(),
-                )
-            }
-        })
-        .await
-        .map_err(|e| internal_error(e.into()))?);
+        let removed = if let Some(id) = &p.id {
+            svc_result!(self.service.unlink_by_id(id).await)
+        } else {
+            svc_result!(
+                self.service
+                    .unlink_by_endpoints(
+                        p.source_id.as_deref().unwrap(),
+                        p.target_id.as_deref().unwrap(),
+                        p.relation.as_deref().unwrap(),
+                    )
+                    .await
+            )
+        };
 
         tracing::info!(tool = "unlink", removed = removed, "link(s) removed");
         json_result(&UnlinkResponse { removed })
@@ -350,67 +234,16 @@ impl ErinraServer {
         &self,
         params: Parameters<SearchInput>,
     ) -> Result<CallToolResult, ErrorData> {
-        let p = params.0;
-
-        // Embed the query (CPU-bound — run off the async runtime).
-        let query_embedding = self.embed_query_text(&p.query).await?;
-
-        // Resolve and validate time filters.
-        let time_input = TimeFilterInput {
-            created_after: p.created_after.as_deref(),
-            created_before: p.created_before.as_deref(),
-            updated_after: p.updated_after.as_deref(),
-            updated_before: p.updated_before.as_deref(),
-            created_max_age_days: p.created_max_age_days,
-            created_min_age_days: p.created_min_age_days,
-            updated_max_age_days: p.updated_max_age_days,
-            updated_min_age_days: p.updated_min_age_days,
+        let req = match search_request(params.0) {
+            Ok(req) => req,
+            Err(msg) => return tool_error(msg),
         };
-        if let Err(msg) = validate_time_filter_input(&time_input) {
-            return tool_error(msg);
-        }
-        let time = resolve_time_filters(&time_input);
-        if let Err(msg) = validate_resolved_ranges(&time) {
-            return tool_error(msg);
-        }
-
-        // DB search (synchronous I/O — run off the async runtime).
-        let db = Arc::clone(&self.db);
-        let config = Arc::clone(&self.config);
-        let reranker = self.reranker.clone();
-        let hits = db!(tokio::task::spawn_blocking(move || {
-            let projects_ref = strs(&p.projects);
-            let tags_ref = strs(&p.tags);
-
-            let db = db.lock().expect("db mutex poisoned");
-            db.search(&SearchParams {
-                query: &p.query,
-                query_embedding: &query_embedding,
-                filter: FilterParams {
-                    projects: projects_ref.as_deref(),
-                    memory_type: p.memory_type.as_deref(),
-                    tags: tags_ref.as_deref(),
-                    include_global: p.include_global.unwrap_or(true),
-                    include_archived: p.include_archived.unwrap_or(false),
-                    time: time.as_ref(),
-                },
-                limit: p.limit.unwrap_or(10),
-                offset: p.offset.unwrap_or(0),
-                content_max_length: Some(config.content_max_length),
-                rrf_k: config.rrf_k,
-                reranker: reranker.as_deref(),
-                reranker_threshold: config.reranker_threshold,
-            })
-        })
-        .await
-        .map_err(|e| internal_error(e.into()))?);
-
+        let hits = svc_result!(self.service.search(req).await);
         let results: Vec<SearchHitResponse> = hits
             .results
             .into_iter()
             .map(SearchHitResponse::from)
             .collect();
-
         json_result(&results)
     }
 
@@ -424,21 +257,9 @@ impl ErinraServer {
         params: Parameters<GetInput>,
     ) -> Result<CallToolResult, ErrorData> {
         let ids = params.0.ids;
-        if ids.len() > 100 {
-            return tool_error(format!("too many IDs ({}, max 100)", ids.len()));
-        }
-        let db = Arc::clone(&self.db);
-        let memories = db!(tokio::task::spawn_blocking(move || {
-            let ids_ref = strs_owned(&ids);
-            let db = db.lock().expect("db mutex poisoned");
-            db.get(&ids_ref)
-        })
-        .await
-        .map_err(|e| internal_error(e.into()))?);
-
+        let memories: Vec<MemoryWithLinks> = svc_result!(self.service.get(&ids).await);
         let results: Vec<MemoryFullResponse> =
             memories.into_iter().map(MemoryFullResponse::from).collect();
-
         json_result(&results)
     }
 
@@ -451,51 +272,11 @@ impl ErinraServer {
         &self,
         params: Parameters<ListInput>,
     ) -> Result<CallToolResult, ErrorData> {
-        let p = params.0;
-
-        // Resolve and validate time filters.
-        let time_input = TimeFilterInput {
-            created_after: p.created_after.as_deref(),
-            created_before: p.created_before.as_deref(),
-            updated_after: p.updated_after.as_deref(),
-            updated_before: p.updated_before.as_deref(),
-            created_max_age_days: p.created_max_age_days,
-            created_min_age_days: p.created_min_age_days,
-            updated_max_age_days: p.updated_max_age_days,
-            updated_min_age_days: p.updated_min_age_days,
+        let req = match list_request(params.0) {
+            Ok(req) => req,
+            Err(msg) => return tool_error(msg),
         };
-        if let Err(msg) = validate_time_filter_input(&time_input) {
-            return tool_error(msg);
-        }
-        let time = resolve_time_filters(&time_input);
-        if let Err(msg) = validate_resolved_ranges(&time) {
-            return tool_error(msg);
-        }
-
-        let db = Arc::clone(&self.db);
-        let config = Arc::clone(&self.config);
-        let result = db!(tokio::task::spawn_blocking(move || {
-            let projects_ref = strs(&p.projects);
-            let tags_ref = strs(&p.tags);
-
-            let db = db.lock().expect("db mutex poisoned");
-            db.list(&ListParams {
-                filter: FilterParams {
-                    projects: projects_ref.as_deref(),
-                    memory_type: p.memory_type.as_deref(),
-                    tags: tags_ref.as_deref(),
-                    include_global: p.include_global.unwrap_or(true),
-                    include_archived: p.include_archived.unwrap_or(false),
-                    time: time.as_ref(),
-                },
-                limit: p.limit.unwrap_or(20),
-                offset: p.offset.unwrap_or(0),
-                content_max_length: Some(config.content_max_length),
-            })
-        })
-        .await
-        .map_err(|e| internal_error(e.into()))?);
-
+        let result = svc_result!(self.service.list(req).await);
         let response = ListResponse {
             memories: result
                 .memories
@@ -519,151 +300,19 @@ impl ErinraServer {
         params: Parameters<ContextInput>,
     ) -> Result<CallToolResult, ErrorData> {
         let p = params.0;
-
-        // Validate inputs.
-        if p.queries.is_empty() {
-            return tool_error("queries must not be empty");
-        }
-        if p.queries.len() > 5 {
-            return tool_error(format!("too many queries ({}, max 5)", p.queries.len()));
-        }
-
-        let limit = p.limit.unwrap_or(10) as usize;
-        if limit == 0 {
-            return tool_error("limit must be greater than 0");
-        }
-        let content_budget = p.content_budget.unwrap_or(2000) as usize;
-        if content_budget == 0 {
-            return tool_error("content_budget must be greater than 0");
-        }
-        let include_taxonomy = p.include_taxonomy.unwrap_or(false);
         let query_count = p.queries.len();
-
-        // Embed all queries.
-        let mut query_embeddings = Vec::with_capacity(p.queries.len());
-        for query in &p.queries {
-            let emb = self.embed_query_text(query).await?;
-            query_embeddings.push(emb);
-        }
-
-        // Run all searches + optional discover in a single blocking block.
-        let db = Arc::clone(&self.db);
-        let config = Arc::clone(&self.config);
-        let reranker = self.reranker.clone();
-        let queries = p.queries;
-        let projects = p.projects;
-        let memory_type = p.memory_type;
-        let tags = p.tags;
-        let include_global = p.include_global.unwrap_or(true);
-
-        let (merged_hits, taxonomy) = db!(tokio::task::spawn_blocking(move || {
-            let projects_ref = strs(&projects);
-            let tags_ref = strs(&tags);
-
-            let db = db.lock().expect("db mutex poisoned");
-
-            // Run each query's search, collecting into a HashMap for dedup.
-            let mut best: HashMap<String, (SearchHit, usize)> = HashMap::new();
-
-            for (qi, (query, emb)) in queries.iter().zip(query_embeddings.iter()).enumerate() {
-                let hits = db.search(&SearchParams {
-                    query,
-                    query_embedding: emb,
-                    filter: FilterParams {
-                        projects: projects_ref.as_deref(),
-                        memory_type: memory_type.as_deref(),
-                        tags: tags_ref.as_deref(),
-                        include_global,
-                        include_archived: false,
-                        ..Default::default()
-                    },
-                    limit: limit as u32,
-                    offset: 0,
-                    content_max_length: Some(config.content_max_length),
-                    rrf_k: config.rrf_k,
-                    reranker: reranker.as_deref(),
-                    reranker_threshold: config.reranker_threshold,
-                })?;
-
-                for hit in hits.results {
-                    let id = hit.memory.id.clone();
-                    match best.entry(id) {
-                        std::collections::hash_map::Entry::Occupied(mut entry) => {
-                            let (existing_hit, existing_qi) = entry.get_mut();
-                            if hit.score > existing_hit.score {
-                                *existing_hit = hit;
-                                *existing_qi = qi;
-                            }
-                        }
-                        std::collections::hash_map::Entry::Vacant(entry) => {
-                            entry.insert((hit, qi));
-                        }
-                    }
-                }
-            }
-
-            // Sort by score descending.
-            let mut merged: Vec<(SearchHit, usize)> = best.into_values().collect();
-            merged.sort_by(|a, b| {
-                b.0.score
-                    .partial_cmp(&a.0.score)
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            });
-
-            // Apply limit.
-            merged.truncate(limit);
-
-            // Optionally get taxonomy.
-            let taxonomy = if include_taxonomy {
-                Some(db.discover()?)
-            } else {
-                None
-            };
-
-            Ok::<_, DbError>((merged, taxonomy))
-        })
-        .await
-        .map_err(|e| internal_error(e.into()))?);
-
-        // Apply content budget.
-        let mut total_chars: usize = 0;
-        let mut response_truncated = false;
-        let mut memories: Vec<ContextHit> = Vec::new();
-
-        for (hit, qi) in merged_hits {
-            let content_len = hit.memory.content.chars().count();
-            if total_chars + content_len > content_budget && !memories.is_empty() {
-                response_truncated = true;
-                break;
-            }
-            total_chars += content_len;
-            memories.push(ContextHit {
-                id: hit.memory.id,
-                content: hit.memory.content,
-                projects: hit.memory.projects,
-                memory_type: hit.memory.memory_type,
-                tags: hit.memory.tags,
-                score: hit.score,
-                query_index: qi,
-                created_at: hit.memory.created_at,
-                truncated: hit.memory.truncated,
-            });
-        }
+        let req = crate::service::ContextRequest::from(p);
+        let result = svc_result!(self.service.context(req).await);
 
         tracing::info!(
             tool = "context",
             queries = query_count,
-            results = memories.len(),
-            truncated = response_truncated,
+            results = result.hits.len(),
+            truncated = result.truncated,
             "context search completed"
         );
 
-        let response = ContextResponse {
-            memories,
-            taxonomy,
-            truncated: response_truncated,
-        };
-        json_result(&response)
+        json_result(&ContextResponse::from(result))
     }
 
     // ── discover ─────────────────────────────────────────────────────────
@@ -673,14 +322,7 @@ impl ErinraServer {
     /// refresh your understanding of the taxonomy.
     #[tool(name = "discover")]
     pub(crate) async fn tool_discover(&self) -> Result<CallToolResult, ErrorData> {
-        let db = Arc::clone(&self.db);
-        let result = db!(tokio::task::spawn_blocking(move || {
-            let db = db.lock().expect("db mutex poisoned");
-            db.discover()
-        })
-        .await
-        .map_err(|e| internal_error(e.into()))?);
-
+        let result = svc_result!(self.service.discover().await);
         json_result(&result)
     }
 }
@@ -694,26 +336,7 @@ impl ErinraServer {
 
 // ── Time filter helpers ─────────────────────────────────────────────────
 
-/// Resolved absolute time filters (all owned strings).
-/// Created by `resolve_time_filters` from a mix of absolute and relative inputs.
-pub(crate) struct ResolvedTimeFilters {
-    pub created_after: Option<String>,
-    pub created_before: Option<String>,
-    pub updated_after: Option<String>,
-    pub updated_before: Option<String>,
-}
-
-impl ResolvedTimeFilters {
-    /// Borrow as `TimeFilters` for passing to `FilterParams`.
-    pub fn as_ref(&self) -> TimeFilters<'_> {
-        TimeFilters {
-            created_after: self.created_after.as_deref(),
-            created_before: self.created_before.as_deref(),
-            updated_after: self.updated_after.as_deref(),
-            updated_before: self.updated_before.as_deref(),
-        }
-    }
-}
+use crate::service::ResolvedTimeFilters;
 
 /// Format a `SystemTime` as ISO 8601 with millisecond precision matching SQLite's
 /// `strftime('%Y-%m-%dT%H:%M:%fZ', 'now')` format.
@@ -779,6 +402,17 @@ fn validate_time_filter_input(input: &TimeFilterInput) -> Result<(), String> {
         validate_timestamp(ts, "updated_before")?;
     }
     Ok(())
+}
+
+/// Validate, resolve, and re-validate time filters in one step.
+/// Combines `validate_time_filter_input` + `resolve_time_filters` +
+/// `validate_resolved_ranges` to eliminate duplication in `search_request`
+/// and `list_request`.
+fn resolve_and_validate_time(input: &TimeFilterInput) -> Result<ResolvedTimeFilters, String> {
+    validate_time_filter_input(input)?;
+    let resolved = resolve_time_filters(input);
+    validate_resolved_ranges(&resolved)?;
+    Ok(resolved)
 }
 
 /// Validate that resolved time ranges are non-empty (after < before).
@@ -868,33 +502,63 @@ pub(crate) fn resolve_time_filters(input: &TimeFilterInput) -> ResolvedTimeFilte
     }
 }
 
-// ── Embed helpers ───────────────────────────────────────────────────────
+// ── Fallible request conversions (time filter resolution) ───────────────
 
-impl ErinraServer {
-    /// Embed a single document for storage (uses document-prefix semantics).
-    pub(crate) async fn embed_content(&self, text: &str) -> Result<Vec<f32>, ErrorData> {
-        let embedder = Arc::clone(&self.embedder);
-        let text = text.to_owned();
-        tokio::task::spawn_blocking(move || {
-            let vecs = embedder.embed_documents(&[&text])?;
-            vecs.into_iter()
-                .next()
-                .ok_or_else(|| anyhow::anyhow!("embedder returned no vectors"))
-        })
-        .await
-        .map_err(|e| internal_error(e.into()))?
-        .map_err(internal_error)
-    }
+/// Build a `SearchRequest` from `SearchInput`, resolving and validating
+/// time filters. Returns an error message suitable for `tool_error` on failure.
+pub(crate) fn search_request(input: SearchInput) -> Result<crate::service::SearchRequest, String> {
+    let time_input = TimeFilterInput {
+        created_after: input.created_after.as_deref(),
+        created_before: input.created_before.as_deref(),
+        updated_after: input.updated_after.as_deref(),
+        updated_before: input.updated_before.as_deref(),
+        created_max_age_days: input.created_max_age_days,
+        created_min_age_days: input.created_min_age_days,
+        updated_max_age_days: input.updated_max_age_days,
+        updated_min_age_days: input.updated_min_age_days,
+    };
+    let resolved = resolve_and_validate_time(&time_input)?;
 
-    /// Embed a single query for search (uses query-prefix semantics).
-    pub(crate) async fn embed_query_text(&self, text: &str) -> Result<Vec<f32>, ErrorData> {
-        let embedder = Arc::clone(&self.embedder);
-        let text = text.to_owned();
-        tokio::task::spawn_blocking(move || embedder.embed_query(&text))
-            .await
-            .map_err(|e| internal_error(e.into()))?
-            .map_err(internal_error)
-    }
+    Ok(crate::service::SearchRequest {
+        query: input.query,
+        projects: input.projects,
+        memory_type: input.memory_type,
+        tags: input.tags,
+        include_global: input.include_global.unwrap_or(true),
+        include_archived: input.include_archived.unwrap_or(false),
+        time: resolved,
+        limit: input.limit.unwrap_or(10),
+        offset: input.offset.unwrap_or(0),
+        content_max_length: None,
+    })
+}
+
+/// Build a `ListRequest` from `ListInput`, resolving and validating
+/// time filters. Returns an error message suitable for `tool_error` on failure.
+pub(crate) fn list_request(input: ListInput) -> Result<crate::service::ListRequest, String> {
+    let time_input = TimeFilterInput {
+        created_after: input.created_after.as_deref(),
+        created_before: input.created_before.as_deref(),
+        updated_after: input.updated_after.as_deref(),
+        updated_before: input.updated_before.as_deref(),
+        created_max_age_days: input.created_max_age_days,
+        created_min_age_days: input.created_min_age_days,
+        updated_max_age_days: input.updated_max_age_days,
+        updated_min_age_days: input.updated_min_age_days,
+    };
+    let resolved = resolve_and_validate_time(&time_input)?;
+
+    Ok(crate::service::ListRequest {
+        projects: input.projects,
+        memory_type: input.memory_type,
+        tags: input.tags,
+        include_global: input.include_global.unwrap_or(true),
+        include_archived: input.include_archived.unwrap_or(false),
+        time: resolved,
+        limit: input.limit.unwrap_or(20),
+        offset: input.offset.unwrap_or(0),
+        content_max_length: None,
+    })
 }
 
 #[cfg(test)]
@@ -1008,5 +672,235 @@ mod tests {
             before, "2026-03-10T00:00:00.000Z",
             "tighter absolute bound should win"
         );
+    }
+
+    // ── Behavior 2: ServiceError → handler result routing ──
+
+    #[test]
+    fn service_error_invalid_input_maps_to_tool_error() {
+        use crate::service::ServiceError;
+
+        let err = ServiceError::InvalidInput("bad input".to_string());
+        let result = handle_service_error(err);
+        // Should be a tool error (Ok(CallToolResult with is_error))
+        let Err(Ok(call_result)) = result else {
+            panic!("expected tool error");
+        };
+        assert!(call_result.is_error.unwrap_or(false));
+    }
+
+    #[test]
+    fn service_error_db_not_found_maps_to_tool_error() {
+        use crate::db::error::DbError;
+        use crate::service::ServiceError;
+
+        let err = ServiceError::Db(DbError::NotFound {
+            entity: "memory",
+            id: "some-id".to_string(),
+        });
+        let result = handle_service_error(err);
+        let Err(Ok(call_result)) = result else {
+            panic!("expected tool error");
+        };
+        assert!(call_result.is_error.unwrap_or(false));
+    }
+
+    #[test]
+    fn service_error_db_already_archived_maps_to_tool_error() {
+        use crate::db::error::DbError;
+        use crate::service::ServiceError;
+
+        let err = ServiceError::Db(DbError::AlreadyArchived {
+            id: "some-id".to_string(),
+            operation: "update".to_string(),
+        });
+        let result = handle_service_error(err);
+        let Err(Ok(call_result)) = result else {
+            panic!("expected tool error");
+        };
+        assert!(call_result.is_error.unwrap_or(false));
+    }
+
+    #[test]
+    fn service_error_embedding_maps_to_protocol_error() {
+        use crate::service::ServiceError;
+
+        let err = ServiceError::Embedding(anyhow::anyhow!("ONNX crashed"));
+        let result = handle_service_error(err);
+        let Err(Err(_error_data)) = result else {
+            panic!("expected protocol error");
+        };
+    }
+
+    // ── Behavior 3: SearchInput → SearchRequest time filter resolution ──
+
+    #[test]
+    fn search_request_from_input_no_time_filters() {
+        let input = SearchInput {
+            query: "test query".to_string(),
+            projects: Some(vec!["proj-a".to_string()]),
+            memory_type: Some("pattern".to_string()),
+            tags: Some(vec!["rust".to_string()]),
+            include_global: Some(false),
+            include_archived: Some(true),
+            created_after: None,
+            created_before: None,
+            updated_after: None,
+            updated_before: None,
+            created_max_age_days: None,
+            created_min_age_days: None,
+            updated_max_age_days: None,
+            updated_min_age_days: None,
+            limit: Some(5),
+            offset: Some(10),
+        };
+
+        let req = search_request(input).unwrap();
+        assert_eq!(req.query, "test query");
+        assert_eq!(req.projects, Some(vec!["proj-a".to_string()]));
+        assert_eq!(req.memory_type, Some("pattern".to_string()));
+        assert_eq!(req.tags, Some(vec!["rust".to_string()]));
+        assert!(!req.include_global);
+        assert!(req.include_archived);
+        assert_eq!(req.limit, 5);
+        assert_eq!(req.offset, 10);
+        assert!(req.time.created_after.is_none());
+    }
+
+    #[test]
+    fn search_request_defaults() {
+        let input = SearchInput {
+            query: "q".to_string(),
+            projects: None,
+            memory_type: None,
+            tags: None,
+            include_global: None,
+            include_archived: None,
+            created_after: None,
+            created_before: None,
+            updated_after: None,
+            updated_before: None,
+            created_max_age_days: None,
+            created_min_age_days: None,
+            updated_max_age_days: None,
+            updated_min_age_days: None,
+            limit: None,
+            offset: None,
+        };
+
+        let req = search_request(input).unwrap();
+        assert!(req.include_global); // default true
+        assert!(!req.include_archived); // default false
+        assert_eq!(req.limit, 10); // default 10
+        assert_eq!(req.offset, 0); // default 0
+    }
+
+    #[test]
+    fn search_request_bad_timestamp_fails() {
+        let input = SearchInput {
+            query: "q".to_string(),
+            projects: None,
+            memory_type: None,
+            tags: None,
+            include_global: None,
+            include_archived: None,
+            created_after: Some("not-a-timestamp".to_string()),
+            created_before: None,
+            updated_after: None,
+            updated_before: None,
+            created_max_age_days: None,
+            created_min_age_days: None,
+            updated_max_age_days: None,
+            updated_min_age_days: None,
+            limit: None,
+            offset: None,
+        };
+
+        let err = search_request(input).unwrap_err();
+        assert!(err.contains("created_after"));
+        assert!(err.contains("ISO 8601"));
+    }
+
+    #[test]
+    fn search_request_inverted_range_fails() {
+        let input = SearchInput {
+            query: "q".to_string(),
+            projects: None,
+            memory_type: None,
+            tags: None,
+            include_global: None,
+            include_archived: None,
+            created_after: Some("2026-06-01T00:00:00.000Z".to_string()),
+            created_before: Some("2026-01-01T00:00:00.000Z".to_string()),
+            updated_after: None,
+            updated_before: None,
+            created_max_age_days: None,
+            created_min_age_days: None,
+            updated_max_age_days: None,
+            updated_min_age_days: None,
+            limit: None,
+            offset: None,
+        };
+
+        let err = search_request(input).unwrap_err();
+        assert!(err.contains("created_after must be before created_before"));
+    }
+
+    // ── Behavior 6: ListInput → ListRequest ──
+
+    #[test]
+    fn list_request_from_input() {
+        let input = ListInput {
+            projects: Some(vec!["proj-a".to_string()]),
+            memory_type: Some("pattern".to_string()),
+            tags: Some(vec!["rust".to_string()]),
+            include_global: Some(false),
+            include_archived: Some(true),
+            created_after: None,
+            created_before: None,
+            updated_after: None,
+            updated_before: None,
+            created_max_age_days: None,
+            created_min_age_days: None,
+            updated_max_age_days: None,
+            updated_min_age_days: None,
+            limit: Some(5),
+            offset: Some(10),
+        };
+
+        let req = list_request(input).unwrap();
+        assert_eq!(req.projects, Some(vec!["proj-a".to_string()]));
+        assert_eq!(req.memory_type, Some("pattern".to_string()));
+        assert!(!req.include_global);
+        assert!(req.include_archived);
+        assert_eq!(req.limit, 5);
+        assert_eq!(req.offset, 10);
+    }
+
+    #[test]
+    fn list_request_defaults() {
+        let input = ListInput {
+            projects: None,
+            memory_type: None,
+            tags: None,
+            include_global: None,
+            include_archived: None,
+            created_after: None,
+            created_before: None,
+            updated_after: None,
+            updated_before: None,
+            created_max_age_days: None,
+            created_min_age_days: None,
+            updated_max_age_days: None,
+            updated_min_age_days: None,
+            limit: None,
+            offset: None,
+        };
+
+        let req = list_request(input).unwrap();
+        assert!(req.include_global); // default true
+        assert!(!req.include_archived); // default false
+        assert_eq!(req.limit, 20); // default 20
+        assert_eq!(req.offset, 0); // default 0
     }
 }

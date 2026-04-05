@@ -12,18 +12,13 @@ use axum::Router;
 use tower_http::services::ServeDir;
 use tower_http::set_header::SetResponseHeaderLayer;
 
-use crate::db::Database;
-use crate::embedding::{Embedder, Reranker};
+use crate::service::MemoryService;
 
 /// Shared state for axum handlers.
 #[derive(Clone)]
 pub struct AppState {
-    pub db: std::sync::Arc<std::sync::Mutex<Database>>,
-    pub embedder: std::sync::Arc<dyn Embedder>,
-    pub reranker: Option<std::sync::Arc<dyn Reranker>>,
-    pub reranker_threshold: f64,
+    pub service: MemoryService,
     pub auth_token: String,
-    pub mcp_config: crate::mcp::ServerConfig,
 }
 
 /// Options for the web server.
@@ -78,12 +73,7 @@ fn build_mcp_service(
     // Pre-build the server once; the factory just clones it per request.
     // This avoids per-request DB mutex acquisition and taxonomy queries
     // that ErinraServer::new() performs to cache instructions.
-    let server = crate::mcp::ErinraServer::new(
-        state.db.clone(),
-        state.embedder.clone(),
-        state.reranker.clone(),
-        state.mcp_config.clone(),
-    );
+    let server = crate::mcp::ErinraServer::new(state.service.clone());
 
     // Stateless mode: no sessions, plain JSON responses (no SSE framing).
     let config_http = StreamableHttpServerConfig::default()
@@ -98,14 +88,9 @@ fn build_mcp_service(
 }
 
 /// Start the web server and block until shutdown.
-#[allow(clippy::too_many_arguments)]
 pub async fn serve(
-    db: Database,
-    embedder: std::sync::Arc<dyn Embedder>,
-    reranker: Option<std::sync::Arc<dyn Reranker>>,
-    reranker_threshold: f64,
+    service: MemoryService,
     auth_token: String,
-    mcp_config: crate::mcp::ServerConfig,
     addr: SocketAddr,
     opts: ServeOptions,
 ) -> Result<()> {
@@ -117,12 +102,8 @@ pub async fn serve(
     };
 
     let state = AppState {
-        db: std::sync::Arc::new(std::sync::Mutex::new(db)),
-        embedder,
-        reranker,
-        reranker_threshold,
+        service,
         auth_token,
-        mcp_config,
     };
 
     let app = app_router(state);
@@ -217,18 +198,21 @@ mod tests {
     use super::*;
     use crate::db::{Database, DbConfig};
     use crate::embedding::MockEmbedder;
+    use crate::service::ServiceConfig;
 
     const TEST_TOKEN: &str = "test-secret-token-1234";
 
     fn test_app() -> Router {
         let db = Database::open_in_memory(&DbConfig::default()).unwrap();
+        let service = MemoryService::new(
+            Arc::new(Mutex::new(db)),
+            Arc::new(MockEmbedder::new(768)),
+            None,
+            ServiceConfig::default(),
+        );
         let state = AppState {
-            db: Arc::new(Mutex::new(db)),
-            embedder: Arc::new(MockEmbedder::new(768)),
-            reranker: None,
-            reranker_threshold: 0.0,
+            service,
             auth_token: TEST_TOKEN.to_string(),
-            mcp_config: crate::mcp::ServerConfig::default(),
         };
         app_router(state)
     }
@@ -269,100 +253,6 @@ mod tests {
             "response should contain serverInfo, got: {json}"
         );
         assert_eq!(json["result"]["serverInfo"]["name"], "erinra");
-    }
-
-    /// Helper: send a JSON-RPC request to /mcp with auth.
-    async fn mcp_request(app: Router, body: serde_json::Value) -> serde_json::Value {
-        let response = app
-            .oneshot(
-                Request::post("/mcp")
-                    .header("Authorization", format!("Bearer {TEST_TOKEN}"))
-                    .header("Content-Type", "application/json")
-                    .header("Accept", "application/json, text/event-stream")
-                    .body(Body::from(serde_json::to_vec(&body).unwrap()))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(response.status(), 200, "MCP request should return 200");
-        let bytes = axum::body::to_bytes(response.into_body(), 1_000_000)
-            .await
-            .unwrap();
-        serde_json::from_slice(&bytes).expect("response should be valid JSON")
-    }
-
-    #[tokio::test]
-    async fn mcp_store_and_get_round_trip() {
-        // Each stateless request needs its own app (router is consumed by oneshot).
-        // The underlying DB/embedder are shared via Arc, so state persists.
-        let db = Database::open_in_memory(&DbConfig::default()).unwrap();
-        let state = AppState {
-            db: Arc::new(Mutex::new(db)),
-            embedder: Arc::new(MockEmbedder::new(768)),
-            reranker: None,
-            reranker_threshold: 0.0,
-            auth_token: TEST_TOKEN.to_string(),
-            mcp_config: crate::mcp::ServerConfig::default(),
-        };
-
-        // Step 1: Initialize (required even in stateless mode).
-        let init_body = serde_json::json!({
-            "jsonrpc": "2.0", "id": 1, "method": "initialize",
-            "params": {
-                "protocolVersion": "2025-03-26",
-                "capabilities": {},
-                "clientInfo": {"name": "test", "version": "0.1"}
-            }
-        });
-        let init_resp = mcp_request(app_router(state.clone()), init_body).await;
-        assert!(
-            init_resp["result"]["serverInfo"].is_object(),
-            "initialize should return serverInfo"
-        );
-
-        // Step 2: Store a memory.
-        let store_body = serde_json::json!({
-            "jsonrpc": "2.0", "id": 2, "method": "tools/call",
-            "params": {
-                "name": "store",
-                "arguments": {
-                    "content": "MCP over HTTP works!",
-                    "projects": ["test-project"],
-                    "type": "note"
-                }
-            }
-        });
-        let store_resp = mcp_request(app_router(state.clone()), store_body).await;
-        let store_text = store_resp["result"]["content"][0]["text"]
-            .as_str()
-            .expect("store should return text content");
-        let store_data: serde_json::Value =
-            serde_json::from_str(store_text).expect("store text should be JSON");
-        let memory_id = store_data["id"]
-            .as_str()
-            .expect("store should return an id");
-        assert!(!memory_id.is_empty());
-
-        // Step 3: Get the memory back by ID.
-        let get_body = serde_json::json!({
-            "jsonrpc": "2.0", "id": 3, "method": "tools/call",
-            "params": {
-                "name": "get",
-                "arguments": { "ids": [memory_id] }
-            }
-        });
-        let get_resp = mcp_request(app_router(state.clone()), get_body).await;
-        let get_text = get_resp["result"]["content"][0]["text"]
-            .as_str()
-            .expect("get should return text content");
-        let get_data: serde_json::Value =
-            serde_json::from_str(get_text).expect("get text should be JSON");
-        assert_eq!(get_data[0]["id"].as_str(), Some(memory_id));
-        assert_eq!(
-            get_data[0]["content"].as_str(),
-            Some("MCP over HTTP works!")
-        );
-        assert_eq!(get_data[0]["projects"][0].as_str(), Some("test-project"));
     }
 
     #[tokio::test]

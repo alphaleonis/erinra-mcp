@@ -7,5 +7,6 @@ pub mod db;
 pub mod embedding;
 pub mod mcp;
 pub mod relay;
+pub mod service;
 pub mod sync;
 pub mod web;

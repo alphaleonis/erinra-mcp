@@ -21,6 +21,14 @@ pub trait Embedder: Send + Sync {
 
     /// Number of dimensions in the output vectors.
     fn dimensions(&self) -> u32;
+
+    /// Embed a single document, returning exactly one vector.
+    fn embed_one(&self, text: &str) -> Result<Vec<f32>> {
+        self.embed_documents(&[text])?
+            .into_iter()
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("embedder returned no vectors"))
+    }
 }
 
 /// Production embedder wrapping fastembed's `TextEmbedding`.
@@ -390,6 +398,39 @@ mod tests {
         assert_eq!(embedder.dimensions(), 768);
         let vec = embedder.embed_query("trait object test").unwrap();
         assert_eq!(vec.len(), 768);
+    }
+
+    /// Embedder that always returns an empty vec from embed_documents.
+    struct EmptyEmbedder;
+    impl Embedder for EmptyEmbedder {
+        fn embed_documents(&self, _texts: &[&str]) -> Result<Vec<Vec<f32>>> {
+            Ok(vec![])
+        }
+        fn embed_query(&self, _query: &str) -> Result<Vec<f32>> {
+            Ok(vec![])
+        }
+        fn dimensions(&self) -> u32 {
+            128
+        }
+    }
+
+    #[test]
+    fn embed_one_error_on_empty_response() {
+        let embedder = EmptyEmbedder;
+        let err = embedder.embed_one("anything").unwrap_err();
+        assert!(
+            err.to_string().contains("no vectors"),
+            "expected 'no vectors' in error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn embed_one_returns_same_vector_as_embed_documents() {
+        let embedder = MockEmbedder::new(128);
+        let text = "hello world";
+        let one = embedder.embed_one(text).unwrap();
+        let batch = embedder.embed_documents(&[text]).unwrap();
+        assert_eq!(one, batch[0]);
     }
 
     #[test]

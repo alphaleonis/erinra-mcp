@@ -133,9 +133,41 @@ impl Database {
         Ok(deleted)
     }
 
+    /// Read-only reconciliation: decide Insert/Update/Skip based on timestamp comparison.
+    pub fn reconcile_memory(
+        &self,
+        id: &str,
+        remote_updated_at: &str,
+    ) -> DbResult<ReconcileDecision> {
+        let existing: Option<String> = self
+            .conn()
+            .query_row(
+                "SELECT updated_at FROM memories WHERE id = ?1",
+                [id],
+                |row| row.get(0),
+            )
+            .optional()?;
+
+        match existing {
+            None => Ok(ReconcileDecision::Insert),
+            Some(local_ts) if local_ts.as_str() >= remote_updated_at => Ok(ReconcileDecision::Skip),
+            Some(_) => Ok(ReconcileDecision::Update),
+        }
+    }
+
     /// Import a memory via upsert: insert if new, update if remote is newer, skip otherwise.
     /// Returns the action taken.
     pub fn import_memory(&self, params: &ImportMemoryParams) -> DbResult<ImportAction> {
+        let decision = self.reconcile_memory(params.id, params.updated_at)?;
+        self.write_import_memory(params, decision)
+    }
+
+    /// Write a memory import with a pre-determined decision (no reconciliation query).
+    pub(crate) fn write_import_memory(
+        &self,
+        params: &ImportMemoryParams,
+        decision: ReconcileDecision,
+    ) -> DbResult<ImportAction> {
         let ImportMemoryParams {
             id,
             content,
@@ -157,54 +189,11 @@ impl Database {
             });
         }
 
-        let conn = self.conn();
-
-        // Check if memory already exists.
-        let existing_updated_at: Option<String> = conn
-            .query_row(
-                "SELECT updated_at FROM memories WHERE id = ?1",
-                [id],
-                |row| row.get(0),
-            )
-            .optional()?;
-
-        match existing_updated_at {
-            Some(local_ts) => {
-                // Skip if local is newer or equal (local wins on tie).
-                if local_ts.as_str() >= *updated_at {
-                    return Ok(ImportAction::Skipped);
-                }
-
-                // Remote is newer — update.
+        match decision {
+            ReconcileDecision::Skip => Ok(ImportAction::Skipped),
+            ReconcileDecision::Insert => {
                 let emb_bytes = embedding_to_bytes(embedding);
-                let tx = conn.unchecked_transaction()?;
-
-                tx.execute(
-                    "UPDATE memories SET content = ?1, type = ?2, \
-                     updated_at = ?3, archived_at = ?4, \
-                     embedding = ?5 WHERE id = ?6",
-                    rusqlite::params![content, memory_type, updated_at, archived_at, emb_bytes, id],
-                )?;
-
-                // Replace projects and tags.
-                tx.execute("DELETE FROM memory_projects WHERE memory_id = ?1", [id])?;
-                tx.execute("DELETE FROM tags WHERE memory_id = ?1", [id])?;
-                insert_projects(&tx, id, projects)?;
-                insert_tags(&tx, id, tags)?;
-
-                // Update vec0 embedding.
-                tx.execute("DELETE FROM memory_embeddings WHERE memory_id = ?1", [id])?;
-                tx.execute(
-                    "INSERT INTO memory_embeddings (memory_id, embedding) VALUES (?1, ?2)",
-                    rusqlite::params![id, emb_bytes],
-                )?;
-
-                tx.commit()?;
-                Ok(ImportAction::Updated)
-            }
-            None => {
-                // New memory — insert.
-                let emb_bytes = embedding_to_bytes(embedding);
+                let conn = self.conn();
                 let tx = conn.unchecked_transaction()?;
 
                 tx.execute(
@@ -223,6 +212,36 @@ impl Database {
 
                 tx.commit()?;
                 Ok(ImportAction::Inserted)
+            }
+            ReconcileDecision::Update => {
+                let emb_bytes = embedding_to_bytes(embedding);
+                let conn = self.conn();
+                let tx = conn.unchecked_transaction()?;
+
+                let rows = tx.execute(
+                    "UPDATE memories SET content = ?1, type = ?2, \
+                     updated_at = ?3, archived_at = ?4, \
+                     embedding = ?5 WHERE id = ?6",
+                    rusqlite::params![content, memory_type, updated_at, archived_at, emb_bytes, id],
+                )?;
+                if rows == 0 {
+                    tx.commit()?;
+                    return Ok(ImportAction::Skipped);
+                }
+
+                tx.execute("DELETE FROM memory_projects WHERE memory_id = ?1", [id])?;
+                tx.execute("DELETE FROM tags WHERE memory_id = ?1", [id])?;
+                insert_projects(&tx, id, projects)?;
+                insert_tags(&tx, id, tags)?;
+
+                tx.execute("DELETE FROM memory_embeddings WHERE memory_id = ?1", [id])?;
+                tx.execute(
+                    "INSERT INTO memory_embeddings (memory_id, embedding) VALUES (?1, ?2)",
+                    rusqlite::params![id, emb_bytes],
+                )?;
+
+                tx.commit()?;
+                Ok(ImportAction::Updated)
             }
         }
     }
@@ -565,6 +584,174 @@ mod tests {
                 max: 20
             }
         ));
+    }
+
+    #[test]
+    fn reconcile_memory_returns_insert_for_unknown_id() {
+        let db = test_db();
+        let decision = db
+            .reconcile_memory("nonexistent-id", "2026-01-01T00:00:00.000000Z")
+            .unwrap();
+        assert_eq!(decision, ReconcileDecision::Insert);
+    }
+
+    #[test]
+    fn reconcile_memory_returns_update_when_remote_is_newer() {
+        let db = test_db();
+        let emb = mock_embedder();
+        let embedding = test_embedding(&emb, "existing memory");
+
+        db.import_memory(&ImportMemoryParams {
+            id: "rec-1",
+            content: "existing memory",
+            memory_type: None,
+            projects: &[],
+            tags: &[],
+            created_at: "2026-01-01T00:00:00.000000Z",
+            updated_at: "2026-01-01T00:00:00.000000Z",
+            archived_at: None,
+            embedding: &embedding,
+        })
+        .unwrap();
+
+        let decision = db
+            .reconcile_memory("rec-1", "2026-06-01T00:00:00.000000Z")
+            .unwrap();
+        assert_eq!(decision, ReconcileDecision::Update);
+    }
+
+    #[test]
+    fn reconcile_memory_returns_skip_when_local_is_newer() {
+        let db = test_db();
+        let emb = mock_embedder();
+        let embedding = test_embedding(&emb, "newer local");
+
+        db.import_memory(&ImportMemoryParams {
+            id: "rec-2",
+            content: "newer local",
+            memory_type: None,
+            projects: &[],
+            tags: &[],
+            created_at: "2026-01-01T00:00:00.000000Z",
+            updated_at: "2026-06-01T00:00:00.000000Z",
+            archived_at: None,
+            embedding: &embedding,
+        })
+        .unwrap();
+
+        let decision = db
+            .reconcile_memory("rec-2", "2026-01-01T00:00:00.000000Z")
+            .unwrap();
+        assert_eq!(decision, ReconcileDecision::Skip);
+    }
+
+    #[test]
+    fn write_import_memory_inserts_new_memory() {
+        let db = test_db();
+        let emb = mock_embedder();
+        let embedding = test_embedding(&emb, "brand new memory");
+
+        let action = db
+            .write_import_memory(
+                &ImportMemoryParams {
+                    id: "write-1",
+                    content: "brand new memory",
+                    memory_type: Some("fact"),
+                    projects: &["proj-a"],
+                    tags: &["rust", "test"],
+                    created_at: "2026-01-01T00:00:00.000000Z",
+                    updated_at: "2026-01-01T00:00:00.000000Z",
+                    archived_at: None,
+                    embedding: &embedding,
+                },
+                ReconcileDecision::Insert,
+            )
+            .unwrap();
+
+        assert_eq!(action, ImportAction::Inserted);
+
+        let results = db.get(&["write-1"]).unwrap();
+        assert_eq!(results.len(), 1);
+        let m = &results[0].memory;
+        assert_eq!(m.content, "brand new memory");
+        assert_eq!(m.memory_type.as_deref(), Some("fact"));
+        assert_eq!(m.projects, vec!["proj-a"]);
+        assert_eq!(m.tags, vec!["rust", "test"]);
+    }
+
+    #[test]
+    fn write_import_memory_updates_existing_memory() {
+        let db = test_db();
+        let emb = mock_embedder();
+        let embedding_old = test_embedding(&emb, "old content");
+
+        // Insert an existing memory first.
+        db.import_memory(&ImportMemoryParams {
+            id: "write-2",
+            content: "old content",
+            memory_type: Some("note"),
+            projects: &["proj-a"],
+            tags: &["old"],
+            created_at: "2026-01-01T00:00:00.000000Z",
+            updated_at: "2026-01-01T00:00:00.000000Z",
+            archived_at: None,
+            embedding: &embedding_old,
+        })
+        .unwrap();
+
+        // Now update via write_import_memory with Update decision.
+        let embedding_new = test_embedding(&emb, "updated content");
+        let action = db
+            .write_import_memory(
+                &ImportMemoryParams {
+                    id: "write-2",
+                    content: "updated content",
+                    memory_type: Some("pattern"),
+                    projects: &["proj-b"],
+                    tags: &["new"],
+                    created_at: "2026-01-01T00:00:00.000000Z",
+                    updated_at: "2026-06-01T00:00:00.000000Z",
+                    archived_at: None,
+                    embedding: &embedding_new,
+                },
+                ReconcileDecision::Update,
+            )
+            .unwrap();
+
+        assert_eq!(action, ImportAction::Updated);
+
+        let results = db.get(&["write-2"]).unwrap();
+        assert_eq!(results.len(), 1);
+        let m = &results[0].memory;
+        assert_eq!(m.content, "updated content");
+        assert_eq!(m.memory_type.as_deref(), Some("pattern"));
+        assert_eq!(m.projects, vec!["proj-b"]);
+        assert_eq!(m.tags, vec!["new"]);
+    }
+
+    #[test]
+    fn reconcile_memory_returns_skip_on_timestamp_tie() {
+        let db = test_db();
+        let emb = mock_embedder();
+        let embedding = test_embedding(&emb, "tie breaker");
+
+        db.import_memory(&ImportMemoryParams {
+            id: "rec-3",
+            content: "tie breaker",
+            memory_type: None,
+            projects: &[],
+            tags: &[],
+            created_at: "2026-01-01T00:00:00.000000Z",
+            updated_at: "2026-03-15T12:00:00.000000Z",
+            archived_at: None,
+            embedding: &embedding,
+        })
+        .unwrap();
+
+        let decision = db
+            .reconcile_memory("rec-3", "2026-03-15T12:00:00.000000Z")
+            .unwrap();
+        assert_eq!(decision, ReconcileDecision::Skip);
     }
 
     #[test]
