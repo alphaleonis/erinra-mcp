@@ -305,7 +305,17 @@ tombstone_retention_days = 90        # Purge tombstones older than this during e
 | `ERINRA_SYNC_EXPORT_ON_EXIT` | `sync.export_on_exit` |
 | `ERINRA_SYNC_TOMBSTONE_RETENTION_DAYS` | `sync.tombstone_retention_days` |
 
-The `filename` template supports placeholders: `{hostname}`, `{os}`, `{platform}`, `{distro}`, `{user}`.
+The `filename` template supports the following placeholders:
+
+| Placeholder | Resolves to | Example |
+|-------------|-------------|---------|
+| `{hostname}` | Machine hostname | `my-desktop` |
+| `{os}` | Operating system (`linux`, `macos`, `windows`) | `linux` |
+| `{platform}` | Like `{os}` but detects WSL as `wsl` | `wsl` |
+| `{distro}` | Linux distro ID from `/etc/os-release` (falls back to OS) | `fedora` |
+| `{user}` | Current username | `alice` |
+
+Placeholders can be combined (e.g. `{hostname}-{os}`). The resolved filename is sanitized to remove characters unsafe for filenames. The format extension (e.g. `.jsonl.gz`) is appended automatically.
 
 ## Multi-Machine Sync
 
