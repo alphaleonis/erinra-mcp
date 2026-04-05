@@ -125,6 +125,7 @@ Starts (or joins) the background daemon and opens the dashboard in a browser. Th
 | `--port <PORT>` | Override web server port |
 | `--bind <ADDR>` | Override web server bind address |
 | `--no-open` | Don't open the browser automatically |
+| `--open-only` | Open the browser and exit immediately (requires a running daemon) |
 
 ### `export` -- Export memories
 

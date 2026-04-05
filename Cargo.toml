@@ -1,6 +1,6 @@
 [package]
 name = "erinra"
-version = "0.1.0-alpha.1"
+version = "0.1.0-alpha.2"
 edition = "2024"
 description = "Memory MCP server for LLM coding assistants"
 license = "MIT"

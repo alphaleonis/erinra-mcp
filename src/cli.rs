@@ -700,6 +700,7 @@ pub async fn dash(
     port: Option<u16>,
     bind: Option<String>,
     no_open: bool,
+    open_only: bool,
 ) -> Result<()> {
     let db_path = data_dir.join("db.sqlite");
     if !db_path.exists() {
@@ -711,6 +712,10 @@ pub async fn dash(
 
     let port = port.unwrap_or(config.web.port);
     let bind = bind.unwrap_or_else(|| config.web.bind.clone());
+
+    if open_only {
+        return dash_open_only(data_dir, &bind, no_open);
+    }
 
     let action = web::daemon::ensure_daemon(data_dir, port, &bind)?;
     let daemon_port = match &action {
@@ -753,6 +758,42 @@ pub async fn dash(
 
     eprintln!("\nShutting down...");
     let _ = web::daemon::deregister_client(data_dir, std::process::id());
+    Ok(())
+}
+
+/// `--open-only` mode: read existing daemon state, open browser, exit immediately.
+fn dash_open_only(data_dir: &Path, bind: &str, no_open: bool) -> Result<()> {
+    let state = web::daemon::read_state(data_dir)?.ok_or_else(|| {
+        anyhow::anyhow!("no running daemon found. Start one with `erinra serve` or `erinra dash`.")
+    })?;
+
+    // Verify the daemon process is still alive.
+    let sys = sysinfo::System::new_with_specifics(
+        sysinfo::RefreshKind::nothing().with_processes(sysinfo::ProcessRefreshKind::nothing()),
+    );
+    if sys
+        .process(sysinfo::Pid::from_u32(state.daemon_pid))
+        .is_none()
+    {
+        anyhow::bail!(
+            "daemon (pid {}) is no longer running. Start one with `erinra serve` or `erinra dash`.",
+            state.daemon_pid,
+        );
+    }
+
+    let daemon_port = state.port;
+    let url = if state.auth_token.is_empty() {
+        format!("http://{bind}:{daemon_port}")
+    } else {
+        format!("http://{bind}:{daemon_port}?token={}", state.auth_token)
+    };
+
+    eprintln!("Erinra dashboard: {url}");
+
+    if !no_open && let Err(e) = open::that(&url) {
+        tracing::warn!("failed to open browser: {e}");
+    }
+
     Ok(())
 }
 

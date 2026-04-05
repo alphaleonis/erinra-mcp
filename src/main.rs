@@ -112,6 +112,9 @@ enum Command {
         /// Don't open the browser automatically
         #[arg(long)]
         no_open: bool,
+        /// Open the browser and exit immediately (requires a running daemon)
+        #[arg(long)]
+        open_only: bool,
     },
 }
 
@@ -177,7 +180,8 @@ async fn main() -> Result<()> {
                     port,
                     bind,
                     no_open,
-                } => cli::dash(&data_dir, &config, port, bind, no_open).await,
+                    open_only,
+                } => cli::dash(&data_dir, &config, port, bind, no_open, open_only).await,
                 Command::InternalDaemon { port, bind } => {
                     cli::run_daemon(&data_dir, &config, port, &bind).await
                 }
@@ -260,6 +264,7 @@ mod tests {
                 port,
                 bind,
                 no_open,
+                open_only: _,
             } => {
                 assert_eq!(port, Some(9090));
                 assert_eq!(bind, Some("127.0.0.1".to_string()));
