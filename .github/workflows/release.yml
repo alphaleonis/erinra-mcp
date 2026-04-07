@@ -43,6 +43,14 @@ jobs:
             exit 1
           fi
 
+      - name: Verify Cargo.toml version matches tag
+        run: |
+          CARGO_VERSION="v$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')"
+          if [[ "$CARGO_VERSION" != "${{ inputs.version }}" ]]; then
+            echo "::error::Cargo.toml version ($CARGO_VERSION) does not match tag (${{ inputs.version }}). Update Cargo.toml before releasing."
+            exit 1
+          fi
+
       - name: Verify changelog entry
         if: steps.version.outputs.prerelease == 'false'
         run: |
