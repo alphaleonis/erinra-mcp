@@ -65,15 +65,15 @@ jobs:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
             binary: erinra
-            archive: erinra-${{ inputs.version }}-x86_64-linux.tar.gz
+            archive: erinra-${{ inputs.version }}-x86_64-unknown-linux-gnu.tar.gz
           - target: aarch64-apple-darwin
             os: macos-latest
             binary: erinra
-            archive: erinra-${{ inputs.version }}-aarch64-macos.tar.gz
+            archive: erinra-${{ inputs.version }}-aarch64-apple-darwin.tar.gz
           - target: x86_64-pc-windows-msvc
             os: windows-latest
             binary: erinra.exe
-            archive: erinra-${{ inputs.version }}-x86_64-windows.zip
+            archive: erinra-${{ inputs.version }}-x86_64-pc-windows-msvc.zip
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
