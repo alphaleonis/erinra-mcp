@@ -3,17 +3,17 @@
 use anyhow::{Context, Result};
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWrite, AsyncWriteExt};
 
+use crate::web::daemon::ReadyDaemon;
+
 /// Bridge stdio JSON-RPC to the daemon's `/mcp` HTTP endpoint.
 ///
 /// Reads newline-delimited JSON from `reader`, POSTs each message to the daemon,
 /// and writes responses to `writer`. Generic over reader/writer for testability
 /// (production uses stdin/stdout, tests use DuplexStream).
-pub async fn run_relay<R, W>(
-    mut reader: R,
-    mut writer: W,
-    base_url: &str,
-    auth_token: &str,
-) -> Result<()>
+///
+/// Takes a [`ReadyDaemon`] rather than a loose `(url, token)` pair so the relay
+/// path can only be entered with proven-valid, non-empty credentials.
+pub async fn run_relay<R, W>(mut reader: R, mut writer: W, ready: &ReadyDaemon) -> Result<()>
 where
     R: AsyncBufRead + Unpin,
     W: AsyncWrite + Unpin,
@@ -22,8 +22,8 @@ where
         .timeout(std::time::Duration::from_secs(30))
         .build()
         .context("failed to create HTTP client")?;
-    let mcp_url = format!("{base_url}/mcp");
-    let auth_header = format!("Bearer {auth_token}");
+    let mcp_url = format!("{}/mcp", ready.base_url());
+    let auth_header = format!("Bearer {}", ready.auth_token.as_str());
 
     let mut line = String::new();
     loop {
@@ -109,14 +109,30 @@ mod tests {
     use crate::embedding::MockEmbedder;
     use crate::service::{MemoryService, ServiceConfig};
     use crate::web::AppState;
+    use crate::web::daemon::{AuthToken, DaemonPid, ReadyDaemon};
 
     use super::*;
 
+    /// Build a [`ReadyDaemon`] pointing at the given loopback port + token.
+    fn ready_for(port: u16, token: &str) -> ReadyDaemon {
+        ReadyDaemon {
+            daemon_pid: DaemonPid::new(std::process::id()).unwrap(),
+            port,
+            auth_token: AuthToken::new(token).unwrap(),
+        }
+    }
+
     /// Start a real Axum server on an ephemeral port using in-memory DB,
-    /// returning the base URL and auth token.
-    async fn start_test_server() -> (String, String) {
-        let db = Database::open_in_memory(&DbConfig::default()).unwrap();
+    /// returning a [`ReadyDaemon`] describing it.
+    async fn start_test_server() -> ReadyDaemon {
         let auth_token = "test-relay-token".to_string();
+        let port = start_test_server_with_token(&auth_token).await;
+        ready_for(port, &auth_token)
+    }
+
+    /// Start a real Axum server bound to `127.0.0.1:0`, returning the bound port.
+    async fn start_test_server_with_token(auth_token: &str) -> u16 {
+        let db = Database::open_in_memory(&DbConfig::default()).unwrap();
         let service = MemoryService::new(
             Arc::new(Mutex::new(db)),
             Arc::new(MockEmbedder::new(768)),
@@ -125,13 +141,13 @@ mod tests {
         );
         let state = AppState {
             service,
-            auth_token: auth_token.clone(),
+            auth_token: auth_token.to_string(),
         };
         let app = crate::web::app_router(state);
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-        (format!("http://127.0.0.1:{port}"), auth_token)
+        port
     }
 
     /// A relay test harness: spawns the relay, provides send/receive helpers.
@@ -141,15 +157,14 @@ mod tests {
     }
 
     impl RelayHarness {
-        async fn start(base_url: &str, auth_token: &str) -> Self {
+        async fn start(ready: &ReadyDaemon) -> Self {
             let (stdin_tx, stdin_rx) = tokio::io::duplex(8192);
             let (stdout_tx, stdout_rx) = tokio::io::duplex(8192);
 
-            let url = base_url.to_string();
-            let token = auth_token.to_string();
+            let ready = ready.clone();
             tokio::spawn(async move {
                 let reader = BufReader::new(stdin_rx);
-                run_relay(reader, stdout_tx, &url, &token).await
+                run_relay(reader, stdout_tx, &ready).await
             });
 
             let (stdin_read_half, stdin_write_half) = tokio::io::split(stdin_tx);
@@ -182,8 +197,8 @@ mod tests {
 
     #[tokio::test]
     async fn relay_forwards_initialize_request_and_returns_server_info() {
-        let (base_url, auth_token) = start_test_server().await;
-        let mut harness = RelayHarness::start(&base_url, &auth_token).await;
+        let ready = start_test_server().await;
+        let mut harness = RelayHarness::start(&ready).await;
 
         harness
             .send(&serde_json::json!({
@@ -211,8 +226,8 @@ mod tests {
 
     #[tokio::test]
     async fn relay_forwards_tool_calls_store_and_get_round_trip() {
-        let (base_url, auth_token) = start_test_server().await;
-        let mut harness = RelayHarness::start(&base_url, &auth_token).await;
+        let ready = start_test_server().await;
+        let mut harness = RelayHarness::start(&ready).await;
 
         // Initialize
         harness
@@ -291,8 +306,8 @@ mod tests {
 
     #[tokio::test]
     async fn relay_handles_notifications_without_writing_response() {
-        let (base_url, auth_token) = start_test_server().await;
-        let mut harness = RelayHarness::start(&base_url, &auth_token).await;
+        let ready = start_test_server().await;
+        let mut harness = RelayHarness::start(&ready).await;
 
         // Initialize first (required)
         harness
@@ -341,16 +356,14 @@ mod tests {
 
     #[tokio::test]
     async fn relay_stops_on_reader_eof() {
-        let (base_url, auth_token) = start_test_server().await;
+        let ready = start_test_server().await;
 
         let (stdin_tx, stdin_rx) = tokio::io::duplex(8192);
         let (stdout_tx, _stdout_rx) = tokio::io::duplex(8192);
 
-        let url = base_url.clone();
-        let token = auth_token.clone();
         let relay_handle = tokio::spawn(async move {
             let reader = BufReader::new(stdin_rx);
-            run_relay(reader, stdout_tx, &url, &token).await
+            run_relay(reader, stdout_tx, &ready).await
         });
 
         // Drop the write side of stdin -> relay should see EOF and exit cleanly

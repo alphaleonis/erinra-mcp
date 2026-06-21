@@ -7,7 +7,7 @@ use anyhow::{Context, Result};
 
 use erinra::embedding::{Embedder, Reranker};
 use erinra::service::{MemoryService, ServiceConfig};
-use erinra::{config, db, embedding, mcp, relay, sync, web};
+use erinra::{config, db, embedding, mcp, sync, web};
 
 /// Load the reranker model if enabled in config. Returns `None` when disabled.
 async fn load_reranker(
@@ -66,29 +66,36 @@ pub async fn serve(
     init_tracing(&config.logging)?;
     tracing::debug!(?config, "loaded configuration");
 
-    // Try relay mode: if a daemon is running, bridge stdio to its /mcp endpoint
-    // instead of loading models locally. This skips the ~137 MB model download.
-    if let Ok(Some(daemon_state)) = web::daemon::read_state(data_dir)
-        && web::daemon::is_pid_alive(daemon_state.daemon_pid)
-    {
-        tracing::info!(
-            port = daemon_state.port,
-            daemon_pid = daemon_state.daemon_pid,
-            "daemon detected, attempting relay mode"
-        );
-        let base_url = format!("http://127.0.0.1:{}", daemon_state.port);
-        let stdin = tokio::io::BufReader::new(tokio::io::stdin());
-        let stdout = tokio::io::stdout();
-        match relay::run_relay(stdin, stdout, &base_url, &daemon_state.auth_token).await {
-            Ok(()) => return Ok(()),
-            Err(e) => {
-                // Fallback only works if relay failed immediately (e.g., connection refused).
-                // If it failed mid-session, the MCP client has already started communicating
-                // and won't re-initialize with a new standalone server.
-                tracing::warn!("relay mode failed, falling back to standalone: {e:#}");
+    // Resolve the startup role from the typed discovery result. The decision is
+    // a single exhaustive match over a pure resolver; relay is reachable only
+    // when a daemon is proven Ready, and the relay-vs-standalone fallback lives
+    // in exactly one place (gated on whether the daemon has spoken to the client).
+    let discovery = web::daemon::discover(data_dir, &web::daemon::SysinfoProbe)?;
+    let spawn_web = match web::daemon::resolve_startup_mode(discovery, web) {
+        web::daemon::StartupMode::Relay(ready) => {
+            tracing::info!(
+                port = ready.port,
+                daemon_pid = ready.daemon_pid.get(),
+                "daemon detected, attempting relay mode"
+            );
+            match web::daemon::run_relay_mode(&ready).await {
+                web::daemon::RelayOutcome::Completed => return Ok(()),
+                web::daemon::RelayOutcome::FailedBeforeFirstByte(e) => {
+                    // The client has not yet received anything from the daemon,
+                    // so a fresh standalone server is safe.
+                    tracing::warn!("relay connect failed, falling back to standalone: {e:#}");
+                    false
+                }
+                web::daemon::RelayOutcome::FailedMidSession(e) => {
+                    // The client already started a session with the daemon and
+                    // will not re-initialize. Fail loudly — never silently
+                    // restart into a corrupt session.
+                    return Err(e.context("relay failed mid-session; cannot fall back"));
+                }
             }
         }
-    }
+        web::daemon::StartupMode::Standalone { spawn_web } => spawn_web,
+    };
 
     tracing::info!("loading embedding model...");
     let model_cache_dir = data_dir.join("models");
@@ -162,9 +169,10 @@ pub async fn serve(
 
     let service = MemoryService::new(db, embedder, reranker, ServiceConfig::from(&config));
 
-    // Optionally start the web dashboard daemon.
+    // Optionally start the web dashboard daemon. `spawn_web` comes from the
+    // resolver: it is the requested `--web` flag unless we already relayed.
     let mut daemon_started = false;
-    if web {
+    if spawn_web {
         let web_port = port.unwrap_or(config.web.port);
         let web_bind = bind.unwrap_or_else(|| config.web.bind.clone());
         match web::daemon::ensure_daemon(data_dir, web_port, &web_bind) {
@@ -717,21 +725,20 @@ pub async fn dash(
         return dash_open_only(data_dir, &bind, no_open);
     }
 
-    let action = web::daemon::ensure_daemon(data_dir, port, &bind)?;
-    let daemon_port = match &action {
-        web::daemon::DaemonAction::Spawned { port } => *port,
-        web::daemon::DaemonAction::Joined { port } => *port,
-    };
+    web::daemon::ensure_daemon(data_dir, port, &bind)?;
 
-    // Read the auth token from the daemon state file so we can pass it to the browser.
-    let auth_token = web::daemon::read_state(data_dir)?
-        .map(|s| s.auth_token)
-        .unwrap_or_default();
-
-    let url = if auth_token.is_empty() {
-        format!("http://{bind}:{daemon_port}")
-    } else {
-        format!("http://{bind}:{daemon_port}?token={auth_token}")
+    // Discover the now-Ready daemon to get its proven port + token for the URL.
+    let url = match web::daemon::discover(data_dir, &web::daemon::SysinfoProbe)? {
+        web::daemon::Discovery::Ready(ready) => {
+            format!(
+                "http://{bind}:{}?token={}",
+                ready.port,
+                ready.auth_token.as_str()
+            )
+        }
+        // Should not happen right after a successful ensure_daemon, but degrade
+        // gracefully to a tokenless URL on the configured port.
+        _ => format!("http://{bind}:{port}"),
     };
 
     eprintln!("Erinra dashboard: {url}");
@@ -763,30 +770,27 @@ pub async fn dash(
 
 /// `--open-only` mode: read existing daemon state, open browser, exit immediately.
 fn dash_open_only(data_dir: &Path, bind: &str, no_open: bool) -> Result<()> {
-    let state = web::daemon::read_state(data_dir)?.ok_or_else(|| {
-        anyhow::anyhow!("no running daemon found. Start one with `erinra serve` or `erinra dash`.")
-    })?;
-
-    // Verify the daemon process is still alive.
-    let sys = sysinfo::System::new_with_specifics(
-        sysinfo::RefreshKind::nothing().with_processes(sysinfo::ProcessRefreshKind::nothing()),
-    );
-    if sys
-        .process(sysinfo::Pid::from_u32(state.daemon_pid))
-        .is_none()
-    {
-        anyhow::bail!(
-            "daemon (pid {}) is no longer running. Start one with `erinra serve` or `erinra dash`.",
-            state.daemon_pid,
-        );
-    }
-
-    let daemon_port = state.port;
-    let url = if state.auth_token.is_empty() {
-        format!("http://{bind}:{daemon_port}")
-    } else {
-        format!("http://{bind}:{daemon_port}?token={}", state.auth_token)
+    // `discover` probes liveness and reaps a dead record, so a `Ready` result is
+    // a proven-running daemon.
+    let ready = match web::daemon::discover(data_dir, &web::daemon::SysinfoProbe)? {
+        web::daemon::Discovery::Ready(ready) => ready,
+        web::daemon::Discovery::Claiming { .. } => {
+            anyhow::bail!(
+                "a daemon is still starting up. Try again in a moment, or start one with `erinra serve` or `erinra dash`."
+            );
+        }
+        web::daemon::Discovery::Vacant => {
+            anyhow::bail!(
+                "no running daemon found. Start one with `erinra serve` or `erinra dash`."
+            );
+        }
     };
+
+    let url = format!(
+        "http://{bind}:{}?token={}",
+        ready.port,
+        ready.auth_token.as_str()
+    );
 
     eprintln!("Erinra dashboard: {url}");
 
@@ -814,19 +818,17 @@ pub async fn run_daemon(
         );
     }
 
-    // Generate auth token and write state file early, before loading models.
-    // This avoids a race condition where `dash` reads the state file before
-    // the daemon finishes loading models and would get an empty token.
-    let auth_token = web::auth::generate_auth_token();
+    // Generate auth token and publish the Ready state early, before loading
+    // models. This avoids a race where `dash` reads the state file before the
+    // daemon finishes loading models and would get an empty token; the typed
+    // contract guarantees a published record always carries a real PID + token.
+    let auth_token_str = web::auth::generate_auth_token();
     let our_pid = std::process::id();
-    web::daemon::update_state(data_dir, |existing| {
-        Some(web::daemon::DaemonState {
-            daemon_pid: our_pid,
-            port,
-            clients: existing.map(|s| s.clients).unwrap_or_default(),
-            auth_token: auth_token.clone(),
-        })
-    })?;
+    let daemon_pid = web::daemon::DaemonPid::new(our_pid)
+        .ok_or_else(|| anyhow::anyhow!("daemon process has PID 0; cannot publish state"))?;
+    let auth_token = web::daemon::AuthToken::new(auth_token_str.clone())
+        .ok_or_else(|| anyhow::anyhow!("generated auth token was empty"))?;
+    web::daemon::publish_ready(data_dir, daemon_pid, port, auth_token)?;
 
     // Load embedding model for search support.
     let model_cache_dir = data_dir.join("models");
@@ -865,7 +867,7 @@ pub async fn run_daemon(
     let opts = web::ServeOptions {
         open_browser: false,
     };
-    let server = web::serve(service, auth_token, addr, opts);
+    let server = web::serve(service, auth_token_str, addr, opts);
 
     let data_dir_owned = data_dir.to_path_buf();
 
@@ -874,12 +876,13 @@ pub async fn run_daemon(
         let mut grace_start: Option<std::time::Instant> = None;
         let grace_period = std::time::Duration::from_secs(60);
 
+        let probe = web::daemon::SysinfoProbe;
         loop {
             tokio::time::sleep(std::time::Duration::from_secs(30)).await;
 
-            match web::daemon::cleanup_stale_state(&data_dir_owned) {
-                Ok(Some(state)) => {
-                    if web::daemon::should_shutdown(&state, &mut grace_start, grace_period) {
+            match web::daemon::cleanup_stale_state(&data_dir_owned, &probe) {
+                Ok(Some(clients)) => {
+                    if web::daemon::should_shutdown(&clients, &mut grace_start, grace_period) {
                         tracing::info!("no clients remaining after grace period, shutting down");
                         break;
                     }
