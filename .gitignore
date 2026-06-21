@@ -23,6 +23,9 @@ Thumbs.db
 # Issue tracking (separate repo)
 .nibs/
 
+# decaf plugin working artifacts (not part of the project)
+.decaf/
+
 .architecture-improvements/
 .code-reviews/
 /.grill-me/
