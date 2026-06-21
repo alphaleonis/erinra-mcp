@@ -85,14 +85,9 @@ impl Database {
             }
         }
 
-        // Embedding is stored in two places:
-        // - memories.embedding (BLOB): used for export/import so embeddings travel with the row
-        // - memory_embeddings (vec0): used for cosine-similarity vector search
-        // Both must be kept in sync on store, update, and reembed.
-        tx.execute(
-            "INSERT INTO memory_embeddings (memory_id, embedding) VALUES (?1, ?2)",
-            rusqlite::params![id, emb_bytes],
-        )?;
+        // The embedding BLOB was written inline in the INSERT above. The vec0 search
+        // index (memory_embeddings) is DERIVED from memories.embedding by the
+        // `memories_embeddings_insert` trigger (migration_v3) — no explicit vec write here.
 
         tx.commit()?;
         Ok(id)
@@ -177,6 +172,9 @@ impl Database {
         }
 
         // Update content + embedding (always paired due to the guard above).
+        // Only the memories.embedding BLOB is written; the vec0 search index is replaced
+        // automatically by the `memories_embeddings_update` trigger (migration_v3), which
+        // fires on `UPDATE OF embedding`.
         if let Some(content) = p.content {
             // Guard at line 111 ensures p.embedding is Some when p.content is Some.
             let emb_bytes = embedding_to_bytes(
@@ -187,22 +185,12 @@ impl Database {
                 "UPDATE memories SET content = ?1, embedding = ?2 WHERE id = ?3",
                 rusqlite::params![content, emb_bytes, id],
             )?;
-            tx.execute("DELETE FROM memory_embeddings WHERE memory_id = ?1", [id])?;
-            tx.execute(
-                "INSERT INTO memory_embeddings (memory_id, embedding) VALUES (?1, ?2)",
-                rusqlite::params![id, &emb_bytes],
-            )?;
         } else if let Some(embedding) = p.embedding {
             // Embedding-only update (e.g. reembed without content change).
             let emb_bytes = embedding_to_bytes(embedding);
             tx.execute(
                 "UPDATE memories SET embedding = ?1 WHERE id = ?2",
                 rusqlite::params![emb_bytes, id],
-            )?;
-            tx.execute("DELETE FROM memory_embeddings WHERE memory_id = ?1", [id])?;
-            tx.execute(
-                "INSERT INTO memory_embeddings (memory_id, embedding) VALUES (?1, ?2)",
-                rusqlite::params![id, emb_bytes],
             )?;
         }
 
@@ -612,10 +600,8 @@ impl Database {
         insert_projects(&tx, &new_id, p.projects)?;
         insert_tags(&tx, &new_id, p.tags)?;
 
-        tx.execute(
-            "INSERT INTO memory_embeddings (memory_id, embedding) VALUES (?1, ?2)",
-            rusqlite::params![new_id, emb_bytes],
-        )?;
+        // The embedding BLOB was written inline in the INSERT above; the vec0 index is
+        // populated by the `memories_embeddings_insert` trigger (migration_v3).
 
         // Archive each source and create a supersedes link.
         let mut archived = Vec::with_capacity(p.source_ids.len());
@@ -984,11 +970,8 @@ impl Database {
                 id: id.to_string(),
             });
         }
-        tx.execute("DELETE FROM memory_embeddings WHERE memory_id = ?1", [id])?;
-        tx.execute(
-            "INSERT INTO memory_embeddings (memory_id, embedding) VALUES (?1, ?2)",
-            rusqlite::params![id, emb_bytes],
-        )?;
+        // The vec0 index is replaced by the `memories_embeddings_update` trigger
+        // (migration_v3), which fires on `UPDATE OF embedding`.
         tx.commit()?;
         Ok(())
     }
@@ -2646,7 +2629,7 @@ mod tests {
         let info = db.status().unwrap();
         assert_eq!(info.stats.embedding_model, "NomicEmbedTextV15Q");
         assert_eq!(info.embedding_dimensions, 768);
-        assert_eq!(info.schema_version, 2);
+        assert_eq!(info.schema_version, 3);
         assert!(info.stats.storage_size_bytes >= 0);
     }
 
@@ -2997,5 +2980,288 @@ mod tests {
         let new_embedding = test_embedding(&emb, "new");
         let result = db.update_embedding(&id, &new_embedding);
         assert!(result.is_err());
+    }
+
+    // ── embedding-storage invariant (erin-mgre) ──────────────────────────
+    //
+    // These tests assert the dual-store invariant directly: after each mutation path
+    // `memories.embedding` (BLOB, source of truth) and `memory_embeddings` (vec0,
+    // trigger-derived) hold the SAME bytes for the same id, and a KNN MATCH returns it.
+
+    /// Read the raw embedding BLOB for a memory id (None if NULL / missing).
+    fn blob_for(db: &Database, id: &str) -> Option<Vec<u8>> {
+        db.conn()
+            .query_row(
+                "SELECT embedding FROM memories WHERE id = ?1",
+                [id],
+                |row| row.get::<_, Option<Vec<u8>>>(0),
+            )
+            .unwrap()
+    }
+
+    /// Count vec0 rows for a memory id.
+    fn vec_count(db: &Database, id: &str) -> i64 {
+        db.conn()
+            .query_row(
+                "SELECT count(*) FROM memory_embeddings WHERE memory_id = ?1",
+                [id],
+                |row| row.get(0),
+            )
+            .unwrap()
+    }
+
+    /// Run a KNN MATCH for `embedding` and return the nearest memory_id (None if empty).
+    fn knn_nearest(db: &Database, embedding: &[f32]) -> Option<String> {
+        let bytes = embedding_to_bytes(embedding);
+        db.conn()
+            .query_row(
+                "SELECT memory_id FROM memory_embeddings \
+                 WHERE embedding MATCH ?1 ORDER BY distance ASC LIMIT 1",
+                rusqlite::params![bytes],
+                |row| row.get(0),
+            )
+            .optional()
+            .unwrap()
+    }
+
+    /// Assert the full invariant: BLOB == expected LE bytes, exactly one vec0 row,
+    /// and the id is the nearest neighbour of its own vector.
+    fn assert_stores_agree(db: &Database, id: &str, embedding: &[f32]) {
+        let expected = embedding_to_bytes(embedding);
+        assert_eq!(
+            blob_for(db, id).as_deref(),
+            Some(expected.as_slice()),
+            "memories.embedding BLOB should hold the expected LE bytes"
+        );
+        assert_eq!(
+            vec_count(db, id),
+            1,
+            "memory_embeddings should have exactly one row for {id}"
+        );
+        assert_eq!(
+            knn_nearest(db, embedding).as_deref(),
+            Some(id),
+            "KNN MATCH should return {id} as nearest neighbour of its own vector"
+        );
+    }
+
+    #[test]
+    fn stores_agree_after_store() {
+        let db = test_db();
+        let emb = mock_embedder();
+        let embedding = test_embedding(&emb, "store path");
+
+        let id = db
+            .store(&StoreParams {
+                content: "store path",
+                memory_type: None,
+                projects: &[],
+                tags: &[],
+                links: &[],
+                embedding: &embedding,
+            })
+            .unwrap();
+
+        assert_stores_agree(&db, &id, &embedding);
+    }
+
+    #[test]
+    fn stores_agree_after_update_content_and_embedding() {
+        let db = test_db();
+        let emb = mock_embedder();
+
+        let id = db
+            .store(&StoreParams {
+                content: "original",
+                memory_type: None,
+                projects: &[],
+                tags: &[],
+                links: &[],
+                embedding: &test_embedding(&emb, "original"),
+            })
+            .unwrap();
+
+        let new_embedding = test_embedding(&emb, "updated content body");
+        db.update(
+            &id,
+            &UpdateParams {
+                content: Some("updated content body"),
+                memory_type: FieldUpdate::NoChange,
+                projects: None,
+                tags: None,
+                embedding: Some(&new_embedding),
+            },
+        )
+        .unwrap();
+
+        assert_stores_agree(&db, &id, &new_embedding);
+    }
+
+    #[test]
+    fn stores_agree_after_update_embedding_only() {
+        let db = test_db();
+        let emb = mock_embedder();
+
+        let id = db
+            .store(&StoreParams {
+                content: "content stays",
+                memory_type: None,
+                projects: &[],
+                tags: &[],
+                links: &[],
+                embedding: &test_embedding(&emb, "content stays"),
+            })
+            .unwrap();
+
+        let new_embedding = test_embedding(&emb, "fresh vector only");
+        db.update(
+            &id,
+            &UpdateParams {
+                content: None,
+                memory_type: FieldUpdate::NoChange,
+                projects: None,
+                tags: None,
+                embedding: Some(&new_embedding),
+            },
+        )
+        .unwrap();
+
+        assert_stores_agree(&db, &id, &new_embedding);
+    }
+
+    #[test]
+    fn stores_agree_after_reembed() {
+        let db = test_db();
+        let emb = mock_embedder();
+
+        let id = db
+            .store(&StoreParams {
+                content: "reembed me",
+                memory_type: None,
+                projects: &[],
+                tags: &[],
+                links: &[],
+                embedding: &test_embedding(&emb, "reembed me"),
+            })
+            .unwrap();
+
+        let new_embedding = test_embedding(&emb, "re-embedded vector");
+        db.update_embedding(&id, &new_embedding).unwrap();
+
+        assert_stores_agree(&db, &id, &new_embedding);
+    }
+
+    #[test]
+    fn stores_agree_after_merge() {
+        let db = test_db();
+        let emb = mock_embedder();
+
+        let src1 = db
+            .store(&StoreParams {
+                content: "source one",
+                memory_type: None,
+                projects: &[],
+                tags: &[],
+                links: &[],
+                embedding: &test_embedding(&emb, "source one"),
+            })
+            .unwrap();
+        let src2 = db
+            .store(&StoreParams {
+                content: "source two",
+                memory_type: None,
+                projects: &[],
+                tags: &[],
+                links: &[],
+                embedding: &test_embedding(&emb, "source two"),
+            })
+            .unwrap();
+
+        let merged_embedding = test_embedding(&emb, "merged result");
+        let result = db
+            .merge(&MergeParams {
+                content: "merged result",
+                memory_type: None,
+                projects: &[],
+                tags: &[],
+                source_ids: &[&src1, &src2],
+                embedding: &merged_embedding,
+            })
+            .unwrap();
+
+        assert_stores_agree(&db, &result.id, &merged_embedding);
+    }
+
+    #[test]
+    fn metadata_only_update_leaves_vec_row_untouched() {
+        let db = test_db();
+        let emb = mock_embedder();
+        let embedding = test_embedding(&emb, "tagged memory");
+
+        let id = db
+            .store(&StoreParams {
+                content: "tagged memory",
+                memory_type: Some("pattern"),
+                projects: &[],
+                tags: &["old"],
+                links: &[],
+                embedding: &embedding,
+            })
+            .unwrap();
+
+        // A metadata-only update (tags + type), no content/embedding change. The
+        // AFTER UPDATE OF embedding trigger must NOT fire, so the original vec row stays.
+        db.update(
+            &id,
+            &UpdateParams {
+                content: None,
+                memory_type: FieldUpdate::Set("decision"),
+                projects: Some(&["proj"]),
+                tags: Some(&["new-a", "new-b"]),
+                embedding: None,
+            },
+        )
+        .unwrap();
+
+        // The original embedding still agrees across both stores.
+        assert_stores_agree(&db, &id, &embedding);
+    }
+
+    #[test]
+    fn archive_then_delete_removes_vec_row() {
+        let db = test_db();
+        let emb = mock_embedder();
+        let embedding = test_embedding(&emb, "to be deleted");
+
+        let id = db
+            .store(&StoreParams {
+                content: "to be deleted",
+                memory_type: None,
+                projects: &[],
+                tags: &[],
+                links: &[],
+                embedding: &embedding,
+            })
+            .unwrap();
+        assert_eq!(vec_count(&db, &id), 1);
+
+        // Archive is a soft-delete: the row (and its vec entry) must remain.
+        db.archive(&id).unwrap();
+        assert_eq!(
+            vec_count(&db, &id),
+            1,
+            "archive (soft-delete) must NOT remove the vec row"
+        );
+
+        // A hard DELETE of the memory row triggers the existing delete trigger,
+        // which removes the vec0 entry.
+        db.conn()
+            .execute("DELETE FROM memories WHERE id = ?1", [&id])
+            .unwrap();
+        assert_eq!(
+            vec_count(&db, &id),
+            0,
+            "hard delete must remove the vec row via the delete trigger"
+        );
     }
 }

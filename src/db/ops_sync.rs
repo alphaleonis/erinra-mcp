@@ -205,10 +205,9 @@ impl Database {
                 insert_projects(&tx, id, projects)?;
                 insert_tags(&tx, id, tags)?;
 
-                tx.execute(
-                    "INSERT INTO memory_embeddings (memory_id, embedding) VALUES (?1, ?2)",
-                    rusqlite::params![id, emb_bytes],
-                )?;
+                // The embedding BLOB was written inline in the INSERT above; the vec0
+                // index is populated by the `memories_embeddings_insert` trigger
+                // (migration_v3).
 
                 tx.commit()?;
                 Ok(ImportAction::Inserted)
@@ -234,11 +233,9 @@ impl Database {
                 insert_projects(&tx, id, projects)?;
                 insert_tags(&tx, id, tags)?;
 
-                tx.execute("DELETE FROM memory_embeddings WHERE memory_id = ?1", [id])?;
-                tx.execute(
-                    "INSERT INTO memory_embeddings (memory_id, embedding) VALUES (?1, ?2)",
-                    rusqlite::params![id, emb_bytes],
-                )?;
+                // The embedding BLOB was written in the UPDATE above; the vec0 index is
+                // replaced by the `memories_embeddings_update` trigger (migration_v3),
+                // which fires on `UPDATE OF embedding`.
 
                 tx.commit()?;
                 Ok(ImportAction::Updated)
@@ -812,6 +809,189 @@ mod tests {
         assert!(
             results[0].memory.archived_at.is_none(),
             "archived_at should be cleared after applying unarchive tombstone"
+        );
+    }
+
+    // ── embedding-storage invariant on import paths (erin-mgre) ──────────
+
+    /// Read the raw embedding BLOB for a memory id.
+    fn blob_for(db: &Database, id: &str) -> Option<Vec<u8>> {
+        db.conn()
+            .query_row(
+                "SELECT embedding FROM memories WHERE id = ?1",
+                [id],
+                |row| row.get::<_, Option<Vec<u8>>>(0),
+            )
+            .unwrap()
+    }
+
+    /// Count vec0 rows for a memory id.
+    fn vec_count(db: &Database, id: &str) -> i64 {
+        db.conn()
+            .query_row(
+                "SELECT count(*) FROM memory_embeddings WHERE memory_id = ?1",
+                [id],
+                |row| row.get(0),
+            )
+            .unwrap()
+    }
+
+    /// Nearest neighbour id for a KNN MATCH (None if empty).
+    fn knn_nearest(db: &Database, embedding: &[f32]) -> Option<String> {
+        let bytes = embedding_to_bytes(embedding);
+        db.conn()
+            .query_row(
+                "SELECT memory_id FROM memory_embeddings \
+                 WHERE embedding MATCH ?1 ORDER BY distance ASC LIMIT 1",
+                rusqlite::params![bytes],
+                |row| row.get(0),
+            )
+            .optional()
+            .unwrap()
+    }
+
+    /// Assert BLOB == expected LE bytes, exactly one vec0 row, and self KNN match.
+    fn assert_stores_agree(db: &Database, id: &str, embedding: &[f32]) {
+        let expected = embedding_to_bytes(embedding);
+        assert_eq!(
+            blob_for(db, id).as_deref(),
+            Some(expected.as_slice()),
+            "memories.embedding BLOB should hold the expected LE bytes"
+        );
+        assert_eq!(
+            vec_count(db, id),
+            1,
+            "memory_embeddings should have exactly one row for {id}"
+        );
+        assert_eq!(
+            knn_nearest(db, embedding).as_deref(),
+            Some(id),
+            "KNN MATCH should return {id} as nearest neighbour of its own vector"
+        );
+    }
+
+    #[test]
+    fn stores_agree_after_import_insert() {
+        let db = test_db();
+        let emb = mock_embedder();
+        let embedding = test_embedding(&emb, "imported insert");
+
+        let action = db
+            .import_memory(&ImportMemoryParams {
+                id: "imp-ins-1",
+                content: "imported insert",
+                memory_type: None,
+                projects: &[],
+                tags: &[],
+                created_at: "2026-01-01T00:00:00.000000Z",
+                updated_at: "2026-01-01T00:00:00.000000Z",
+                archived_at: None,
+                embedding: &embedding,
+            })
+            .unwrap();
+        assert_eq!(action, ImportAction::Inserted);
+
+        assert_stores_agree(&db, "imp-ins-1", &embedding);
+    }
+
+    #[test]
+    fn stores_agree_after_import_update() {
+        let db = test_db();
+        let emb = mock_embedder();
+
+        // Insert an existing memory.
+        db.import_memory(&ImportMemoryParams {
+            id: "imp-upd-1",
+            content: "old content",
+            memory_type: None,
+            projects: &[],
+            tags: &[],
+            created_at: "2026-01-01T00:00:00.000000Z",
+            updated_at: "2026-01-01T00:00:00.000000Z",
+            archived_at: None,
+            embedding: &test_embedding(&emb, "old content"),
+        })
+        .unwrap();
+
+        // Import a newer version — drives the Update path with a new embedding.
+        let new_embedding = test_embedding(&emb, "newer content body");
+        let action = db
+            .import_memory(&ImportMemoryParams {
+                id: "imp-upd-1",
+                content: "newer content body",
+                memory_type: None,
+                projects: &[],
+                tags: &[],
+                created_at: "2026-01-01T00:00:00.000000Z",
+                updated_at: "2026-06-01T00:00:00.000000Z",
+                archived_at: None,
+                embedding: &new_embedding,
+            })
+            .unwrap();
+        assert_eq!(action, ImportAction::Updated);
+
+        assert_stores_agree(&db, "imp-upd-1", &new_embedding);
+    }
+
+    #[test]
+    fn export_import_roundtrip_rehydrates_vec_index() {
+        // Source DB: store a memory with a known embedding.
+        let src = test_db();
+        let emb = mock_embedder();
+        let embedding = test_embedding(&emb, "round trip subject");
+        let id = src
+            .store(&StoreParams {
+                content: "round trip subject",
+                memory_type: Some("fact"),
+                projects: &["proj"],
+                tags: &["tag"],
+                links: &[],
+                embedding: &embedding,
+            })
+            .unwrap();
+
+        // Export carries the embedding via the memories.embedding BLOB.
+        let exported = src.export_memories(None).unwrap();
+        let exported = exported.iter().find(|m| m.id == id).unwrap();
+
+        // Fresh destination DB: import the exported memory. The BLOB travels with the
+        // row and the insert trigger must rehydrate the vec0 index.
+        let dst = test_db();
+        let action = dst
+            .import_memory(&ImportMemoryParams {
+                id: &exported.id,
+                content: &exported.content,
+                memory_type: exported.memory_type.as_deref(),
+                projects: &exported
+                    .projects
+                    .iter()
+                    .map(|s| s.as_str())
+                    .collect::<Vec<_>>(),
+                tags: &exported.tags.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+                created_at: &exported.created_at,
+                updated_at: &exported.updated_at,
+                archived_at: exported.archived_at.as_deref(),
+                embedding: &embedding,
+            })
+            .unwrap();
+        assert_eq!(action, ImportAction::Inserted);
+
+        // Both stores agree in the destination, and a KNN MATCH finds the imported row.
+        assert_stores_agree(&dst, &id, &embedding);
+
+        // End-to-end: a vector search in the fresh DB returns the imported memory.
+        let query_embedding = emb.embed_query("round trip subject").unwrap();
+        let results = dst
+            .search(&SearchParams {
+                query: "round trip subject",
+                query_embedding: &query_embedding,
+                ..Default::default()
+            })
+            .unwrap()
+            .results;
+        assert!(
+            results.iter().any(|h| h.memory.id == id),
+            "imported memory should be findable via search after round-trip"
         );
     }
 }

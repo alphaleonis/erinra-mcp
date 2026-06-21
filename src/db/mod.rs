@@ -15,7 +15,7 @@ use anyhow::{Context, Result, bail};
 use rusqlite::{Connection, OptionalExtension};
 
 /// Current schema version. Increment when adding migrations.
-const SCHEMA_VERSION: u32 = 2;
+const SCHEMA_VERSION: u32 = 3;
 
 static SQLITE_VEC_INIT: Once = Once::new();
 
@@ -201,6 +201,7 @@ impl Database {
             match version {
                 1 => Self::migration_v1(&tx, config)?,
                 2 => Self::migration_v2(&tx)?,
+                3 => Self::migration_v3(&tx)?,
                 _ => bail!("unknown schema version: {version}"),
             }
             tx.execute(
@@ -350,6 +351,39 @@ impl Database {
         Ok(())
     }
 
+    /// Derive the `memory_embeddings` vec0 index from `memories.embedding` via triggers.
+    ///
+    /// `memories.embedding` (BLOB) is the single source of truth; the vec0 index is a
+    /// derived secondary store. These triggers keep it in lockstep so application code
+    /// writes ONLY the BLOB column (matching the existing FTS5/delete-trigger pattern).
+    /// The BLOB and vec0 hold the SAME little-endian f32 bytes, so `new.embedding` copies
+    /// straight across with no re-encode.
+    ///
+    /// No data backfill is needed: the BLOB column already holds every embedding and the
+    /// vec0 table is already populated. These triggers govern only future writes.
+    /// `CREATE TRIGGER IF NOT EXISTS` is idempotent on existing databases.
+    fn migration_v3(tx: &rusqlite::Transaction) -> Result<()> {
+        tx.execute_batch(
+            "-- vec0 is DERIVED from memories.embedding. App code writes ONLY the BLOB
+             -- column; these triggers keep memory_embeddings in lockstep. (Deletion is
+             -- already trigger-driven via memories_embeddings_delete from migration_v1.)
+             CREATE TRIGGER IF NOT EXISTS memories_embeddings_insert
+                 AFTER INSERT ON memories
+                 WHEN new.embedding IS NOT NULL BEGIN
+                 INSERT INTO memory_embeddings (memory_id, embedding)
+                     VALUES (new.id, new.embedding);
+             END;
+
+             CREATE TRIGGER IF NOT EXISTS memories_embeddings_update
+                 AFTER UPDATE OF embedding ON memories BEGIN
+                 DELETE FROM memory_embeddings WHERE memory_id = old.id;
+                 INSERT INTO memory_embeddings (memory_id, embedding)
+                     SELECT new.id, new.embedding WHERE new.embedding IS NOT NULL;
+             END;",
+        )?;
+        Ok(())
+    }
+
     /// Verify that the stored embedding config matches the provided config.
     /// Refuses to start if there's a mismatch (vectors from different models are incomparable).
     fn verify_embedding_config(&self, config: &DbConfig) -> Result<()> {
@@ -391,7 +425,7 @@ mod tests {
     #[test]
     fn open_in_memory_sets_schema_version() {
         let db = Database::open_in_memory(&test_config()).unwrap();
-        assert_eq!(db.schema_version().unwrap(), 2);
+        assert_eq!(db.schema_version().unwrap(), 3);
     }
 
     #[test]
@@ -486,10 +520,10 @@ mod tests {
     fn migration_is_idempotent() {
         let config = test_config();
         let mut db = Database::open_in_memory(&config).unwrap();
-        assert_eq!(db.schema_version().unwrap(), 2);
+        assert_eq!(db.schema_version().unwrap(), 3);
         // Running migrate again should be a no-op.
         db.migrate(&config).unwrap();
-        assert_eq!(db.schema_version().unwrap(), 2);
+        assert_eq!(db.schema_version().unwrap(), 3);
     }
 
     #[test]
