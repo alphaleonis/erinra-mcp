@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
-## v0.2.1 - 2026-10-04
+## v0.3.0 - 2026-10-04
 
 ### Fixed
 - Relay sessions now register as daemon clients, so the daemon no longer shuts down under active relays once the process that spawned it exits (e.g. Claude Code's version-negotiation probe).
