@@ -230,6 +230,7 @@ mod tests {
         let response = app
             .oneshot(
                 Request::post("/mcp")
+                    .header("Host", "127.0.0.1")
                     .header("Authorization", format!("Bearer {TEST_TOKEN}"))
                     .header("Content-Type", "application/json")
                     .header("Accept", "application/json, text/event-stream")
@@ -258,6 +259,7 @@ mod tests {
         let response = app
             .oneshot(
                 Request::post("/mcp")
+                    .header("Host", "127.0.0.1")
                     .header("Authorization", format!("Bearer {TEST_TOKEN}"))
                     .header("Content-Type", "text/plain")
                     .header("Accept", "application/json, text/event-stream")
@@ -335,6 +337,7 @@ mod tests {
         let response = app
             .oneshot(
                 Request::post("/mcp")
+                    .header("Host", "127.0.0.1")
                     .header("Content-Type", "application/json")
                     .header("Accept", "application/json, text/event-stream")
                     .body(Body::from(serde_json::to_vec(&body).unwrap()))
@@ -447,9 +450,23 @@ mod tests {
 
     #[tokio::test]
     async fn static_assets_get_correct_mime_types() {
+        // Entry chunk names are content-hashed, so pick one from the build output.
+        let entry_dir = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/web/build/_app/immutable/entry"
+        );
+        let entry_js = std::fs::read_dir(entry_dir)
+            .expect("frontend build output should exist")
+            .filter_map(|e| e.ok()?.file_name().into_string().ok())
+            .find(|name| name.ends_with(".js"))
+            .expect("build should contain a JS entry chunk");
         let app = test_app();
         let response = app
-            .oneshot(Request::get("/_app/env.js").body(Body::empty()).unwrap())
+            .oneshot(
+                Request::get(format!("/_app/immutable/entry/{entry_js}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
             .await
             .unwrap();
 
@@ -462,7 +479,7 @@ mod tests {
             .unwrap();
         assert!(
             content_type.contains("javascript"),
-            "env.js should have javascript content-type, got: {content_type}"
+            "{entry_js} should have javascript content-type, got: {content_type}"
         );
     }
 

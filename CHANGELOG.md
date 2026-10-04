@@ -11,6 +11,11 @@ All notable changes to this project will be documented in this file.
 - The daemon binds its port before advertising itself as ready, so a `serve` started while the daemon is loading models now relays to it instead of falling back to standalone. A port conflict or invalid bind address is reported in about half a second instead of after a 20-second wait.
 - A relay that falls back to standalone no longer hangs the MCP session: input the relay had already read (including `initialize`) is replayed to the standalone server.
 
+### Changed
+- Minimum supported Rust version is now 1.95 (declared in `Cargo.toml`).
+- Dependency updates: fastembed 7, rusqlite 0.40 (bundled SQLite 3.53), sysinfo 0.39, dirs 7, tower-http 0.7, rmcp 1.8, plus compatible updates across the Rust and dashboard dependency trees. Embeddings are unchanged, so existing databases need no `reembed`.
+- The daemon's MCP HTTP endpoint now rejects requests whose `Host` header is not loopback (DNS-rebinding protection from rmcp). Relay mode is unaffected.
+
 ## v0.2.0 - 2026-06-21
 
 ### Added
