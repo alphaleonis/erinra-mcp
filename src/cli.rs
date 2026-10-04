@@ -78,7 +78,7 @@ pub async fn serve(
                 daemon_pid = ready.daemon_pid.get(),
                 "daemon detected, attempting relay mode"
             );
-            match web::daemon::run_relay_mode(&ready).await {
+            match web::daemon::run_relay_mode(data_dir, &ready).await {
                 web::daemon::RelayOutcome::Completed => return Ok(()),
                 web::daemon::RelayOutcome::FailedBeforeFirstByte(e) => {
                     // The client has not yet received anything from the daemon,
@@ -171,14 +171,14 @@ pub async fn serve(
 
     // Optionally start the web dashboard daemon. `spawn_web` comes from the
     // resolver: it is the requested `--web` flag unless we already relayed.
-    let mut daemon_started = false;
+    let mut joined_daemon = None;
     if spawn_web {
         let web_port = port.unwrap_or(config.web.port);
         let web_bind = bind.unwrap_or_else(|| config.web.bind.clone());
         match web::daemon::ensure_daemon(data_dir, web_port, &web_bind) {
             Ok(action) => {
                 tracing::info!(?action, "web dashboard daemon ready");
-                daemon_started = true;
+                joined_daemon = Some(action.daemon_pid());
             }
             Err(e) => {
                 tracing::warn!("failed to start web dashboard daemon: {e:#}");
@@ -187,46 +187,60 @@ pub async fn serve(
         }
     }
 
-    // Run MCP server with signal handling for graceful shutdown
+    // Run MCP server with signal handling for graceful shutdown. An MCP error is
+    // held until cleanup below has run.
     let mcp_future = mcp::serve(service);
+    let mcp_result: Result<()>;
 
     #[cfg(unix)]
     {
         let mut sigterm =
             tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
 
-        tokio::select! {
-            result = mcp_future => { result?; }
+        mcp_result = tokio::select! {
+            result = mcp_future => result,
             _ = tokio::signal::ctrl_c() => {
                 tracing::info!("received SIGINT, shutting down");
+                Ok(())
             }
             _ = sigterm.recv() => {
                 tracing::info!("received SIGTERM, shutting down");
+                Ok(())
             }
-        }
+        };
     }
 
     #[cfg(not(unix))]
     {
-        tokio::select! {
-            result = mcp_future => { result?; }
+        mcp_result = tokio::select! {
+            result = mcp_future => result,
             _ = tokio::signal::ctrl_c() => {
                 tracing::info!("received SIGINT, shutting down");
+                Ok(())
             }
-        }
+        };
     }
 
     // Deregister from web dashboard daemon (only if we successfully registered).
-    if daemon_started {
-        let _ = web::daemon::deregister_client(data_dir, std::process::id());
+    // An MCP error is typically a client's probe exiting at once; leaving shutdown
+    // to the sweep lets the session that follows relay to this daemon.
+    if let Some(daemon_pid) = joined_daemon {
+        let our_pid = std::process::id();
+        let _ = if mcp_result.is_ok() {
+            web::daemon::deregister_client(data_dir, our_pid)
+        } else {
+            web::daemon::deregister_client_for(data_dir, daemon_pid, our_pid)
+        };
     }
 
     // Graceful shutdown: stop background sync
-    if let Some(handle) = sync_handle {
-        handle.shutdown().await.context("sync shutdown failed")?;
-    }
+    let sync_result = match sync_handle {
+        Some(handle) => handle.shutdown().await.context("sync shutdown failed"),
+        None => Ok(()),
+    };
 
-    Ok(())
+    mcp_result?;
+    sync_result
 }
 
 /// Run the `export` subcommand.

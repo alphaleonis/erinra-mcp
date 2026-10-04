@@ -42,8 +42,17 @@ const CLAIM_MAX_AGE: Duration = Duration::from_secs(120);
 /// Result of [`ensure_daemon`]: either spawned a new daemon or joined existing.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DaemonAction {
-    Spawned { port: u16 },
-    Joined { port: u16 },
+    Spawned { port: u16, daemon_pid: DaemonPid },
+    Joined { port: u16, daemon_pid: DaemonPid },
+}
+
+impl DaemonAction {
+    /// The daemon this process registered with.
+    pub fn daemon_pid(&self) -> DaemonPid {
+        match self {
+            Self::Spawned { daemon_pid, .. } | Self::Joined { daemon_pid, .. } => *daemon_pid,
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -635,6 +644,27 @@ enum ClaimDecision {
 /// If the PID is already present, this is a no-op.
 /// Returns an error if there is no `Ready` daemon state file.
 pub fn register_client(data_dir: &Path, client_pid: u32) -> Result<()> {
+    if !add_client(data_dir, client_pid, None)? {
+        anyhow::bail!("cannot register client: no ready daemon state file exists");
+    }
+    Ok(())
+}
+
+/// Register `client_pid` with the specific daemon `ready` describes. Errors if
+/// the record is no longer `Ready` for that daemon_pid (vacant, claiming, or replaced).
+pub fn register_client_for(data_dir: &Path, ready: &ReadyDaemon, client_pid: u32) -> Result<()> {
+    if !add_client(data_dir, client_pid, Some(ready.daemon_pid))? {
+        anyhow::bail!(
+            "cannot register client: daemon {} is no longer the ready daemon",
+            ready.daemon_pid.get()
+        );
+    }
+    Ok(())
+}
+
+/// Add `client_pid` to a `Ready` record, restricted to `only_daemon` when given.
+/// Returns whether a matching record was found.
+fn add_client(data_dir: &Path, client_pid: u32, only_daemon: Option<DaemonPid>) -> Result<bool> {
     let mut registered = false;
     update_state(data_dir, |state| match state {
         Some(WebState::Ready {
@@ -642,7 +672,7 @@ pub fn register_client(data_dir: &Path, client_pid: u32) -> Result<()> {
             port,
             auth_token,
             mut clients,
-        }) => {
+        }) if only_daemon.is_none_or(|pid| pid == daemon_pid) => {
             registered = true;
             if !clients.contains(&client_pid) {
                 clients.push(client_pid);
@@ -656,33 +686,14 @@ pub fn register_client(data_dir: &Path, client_pid: u32) -> Result<()> {
         }
         other => other,
     })?;
-    if !registered {
-        anyhow::bail!("cannot register client: no ready daemon state file exists");
-    }
-    Ok(())
+    Ok(registered)
 }
 
 /// Deregister a client PID from a `Ready` daemon state (locked update).
 /// If this was the last client, sends SIGTERM to the daemon for prompt shutdown
 /// instead of waiting for the next sweep cycle.
 pub fn deregister_client(data_dir: &Path, client_pid: u32) -> Result<()> {
-    let new_state = update_state(data_dir, |state| match state {
-        Some(WebState::Ready {
-            daemon_pid,
-            port,
-            auth_token,
-            mut clients,
-        }) => {
-            clients.retain(|&pid| pid != client_pid);
-            Some(WebState::Ready {
-                daemon_pid,
-                port,
-                auth_token,
-                clients,
-            })
-        }
-        other => other,
-    })?;
+    let new_state = remove_client(data_dir, client_pid, None)?;
 
     // If we were the last client, signal the daemon to shut down promptly.
     if let Some(WebState::Ready {
@@ -696,6 +707,44 @@ pub fn deregister_client(data_dir: &Path, client_pid: u32) -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Remove `client_pid` from `daemon_pid`'s `Ready` record without signaling it,
+/// so the daemon's sweep and grace period decide when it shuts down. A record
+/// naming another daemon is left untouched.
+pub fn deregister_client_for(
+    data_dir: &Path,
+    daemon_pid: DaemonPid,
+    client_pid: u32,
+) -> Result<()> {
+    remove_client(data_dir, client_pid, Some(daemon_pid))?;
+    Ok(())
+}
+
+/// Remove `client_pid` from a `Ready` record, restricted to `only_daemon` when
+/// given. Returns the resulting state.
+fn remove_client(
+    data_dir: &Path,
+    client_pid: u32,
+    only_daemon: Option<DaemonPid>,
+) -> Result<Option<WebState>> {
+    update_state(data_dir, |state| match state {
+        Some(WebState::Ready {
+            daemon_pid,
+            port,
+            auth_token,
+            mut clients,
+        }) if only_daemon.is_none_or(|pid| pid == daemon_pid) => {
+            clients.retain(|&pid| pid != client_pid);
+            Some(WebState::Ready {
+                daemon_pid,
+                port,
+                auth_token,
+                clients,
+            })
+        }
+        other => other,
+    })
 }
 
 /// Send SIGTERM (Unix) or TerminateProcess (Windows) to the daemon.
@@ -729,11 +778,17 @@ pub fn ensure_daemon(data_dir: &Path, port: u16, bind: &str) -> Result<DaemonAct
     let our_pid = std::process::id();
 
     let action = match try_claim(data_dir, our_pid, port, &probe)? {
-        ClaimOutcome::AlreadyReady(ready) => DaemonAction::Joined { port: ready.port },
+        ClaimOutcome::AlreadyReady(ready) => DaemonAction::Joined {
+            port: ready.port,
+            daemon_pid: ready.daemon_pid,
+        },
         ClaimOutcome::AlreadyClaiming { .. } => {
             // Someone else is spawning the daemon. Wait for it to become Ready.
             let ready = wait_for_ready(data_dir, &probe)?;
-            DaemonAction::Joined { port: ready.port }
+            DaemonAction::Joined {
+                port: ready.port,
+                daemon_pid: ready.daemon_pid,
+            }
         }
         ClaimOutcome::Claimed(claim) => {
             // We own the claim — spawn and wait for the daemon to publish Ready.
@@ -747,7 +802,10 @@ pub fn ensure_daemon(data_dir: &Path, port: u16, bind: &str) -> Result<DaemonAct
             // publish is what resolves the `Claiming` record.
             let _consumed = claim;
             match wait_for_ready(data_dir, &probe) {
-                Ok(ready) => DaemonAction::Spawned { port: ready.port },
+                Ok(ready) => DaemonAction::Spawned {
+                    port: ready.port,
+                    daemon_pid: ready.daemon_pid,
+                },
                 Err(e) => {
                     // Daemon failed to come up. Clean up any claim/record we left
                     // behind and surface a helpful error.
@@ -995,15 +1053,41 @@ impl<W: tokio::io::AsyncWrite + Unpin> tokio::io::AsyncWrite for FirstByteTracke
 }
 
 /// Run the relay against a proven [`ReadyDaemon`], bridging process stdin/stdout
-/// to the daemon's `/mcp` endpoint, and classify the outcome.
+/// to the daemon's `/mcp` endpoint as a registered client, and classify the outcome.
 ///
 /// The `FailedBeforeFirstByte` / `FailedMidSession` distinction is what makes the
 /// silent-restart footgun structurally impossible: the caller can only fall back
 /// to standalone in the pre-byte case.
-pub async fn run_relay_mode(ready: &ReadyDaemon) -> RelayOutcome {
+pub async fn run_relay_mode(data_dir: &Path, ready: &ReadyDaemon) -> RelayOutcome {
     let stdin = tokio::io::BufReader::new(tokio::io::stdin());
     let stdout = tokio::io::stdout();
-    run_relay_mode_with(ready, stdin, stdout).await
+    run_registered_relay(data_dir, ready, std::process::id(), stdin, stdout).await
+}
+
+/// Register → relay → deregister, so the daemon's sweep counts this session as a
+/// live client. A failed registration returns `FailedBeforeFirstByte` without
+/// reading stdin.
+pub async fn run_registered_relay<R, W>(
+    data_dir: &Path,
+    ready: &ReadyDaemon,
+    client_pid: u32,
+    reader: R,
+    writer: W,
+) -> RelayOutcome
+where
+    R: tokio::io::AsyncBufRead + Unpin,
+    W: tokio::io::AsyncWrite + Unpin,
+{
+    if let Err(e) = register_client_for(data_dir, ready, client_pid) {
+        return RelayOutcome::FailedBeforeFirstByte(e);
+    }
+    let outcome = run_relay_mode_with(ready, reader, writer).await;
+    // Never signal: a relay may leave while the daemon is still starting, or
+    // just before another client joins.
+    if let Err(e) = deregister_client_for(data_dir, ready.daemon_pid, client_pid) {
+        tracing::warn!("failed to deregister relay client: {e:#}");
+    }
+    outcome
 }
 
 /// Inner form of [`run_relay_mode`] generic over reader/writer, for testing with
@@ -1608,7 +1692,11 @@ mod tests {
     fn register_and_deregister_round_trip() {
         let dir = tempfile::tempdir().unwrap();
         // Dead daemon PID so deregister's shutdown signal is harmless.
-        write_state(dir.path(), &ready_state(u32::MAX - 1, 9090, "tok", vec![])).unwrap();
+        write_state(
+            dir.path(),
+            &ready_state(DEAD_DAEMON_PID, 9090, "tok", vec![]),
+        )
+        .unwrap();
 
         register_client(dir.path(), 1111).unwrap();
         register_client(dir.path(), 1111).unwrap(); // idempotent
@@ -1714,7 +1802,13 @@ mod tests {
         write_state(dir.path(), &ready_state(our_pid, 9090, "tok", vec![])).unwrap();
 
         let action = ensure_daemon(dir.path(), 9090, "127.0.0.1").unwrap();
-        assert_eq!(action, DaemonAction::Joined { port: 9090 });
+        assert_eq!(
+            action,
+            DaemonAction::Joined {
+                port: 9090,
+                daemon_pid: DaemonPid::new(our_pid).unwrap(),
+            }
+        );
         match read_state(dir.path()).unwrap().unwrap() {
             WebState::Ready { clients, .. } => assert!(clients.contains(&our_pid)),
             _ => panic!("expected Ready"),
@@ -1791,7 +1885,10 @@ mod tests {
 
     /// Start a real Axum server bound to an ephemeral port; returns a handle that
     /// can be aborted to simulate the daemon dying, plus a `ReadyDaemon`.
-    async fn start_killable_server(token: &str) -> (tokio::task::JoinHandle<()>, ReadyDaemon) {
+    async fn start_killable_server(
+        token: &str,
+        daemon_pid: u32,
+    ) -> (tokio::task::JoinHandle<()>, ReadyDaemon) {
         let db = Database::open_in_memory(&DbConfig::default()).unwrap();
         let service = MemoryService::new(
             Arc::new(Mutex::new(db)),
@@ -1809,7 +1906,7 @@ mod tests {
         let handle = tokio::spawn(async move {
             let _ = axum::serve(listener, app).await;
         });
-        (handle, ready_daemon(std::process::id(), port, token))
+        (handle, ready_daemon(daemon_pid, port, token))
     }
 
     #[tokio::test]
@@ -1840,7 +1937,7 @@ mod tests {
 
     #[tokio::test]
     async fn run_relay_mode_returns_failed_mid_session_when_server_dies_after_first_response() {
-        let (server, ready) = start_killable_server("mid-tok").await;
+        let (server, ready) = start_killable_server("mid-tok", DEAD_DAEMON_PID).await;
 
         // Manual duplex plumbing so we can drive requests and read responses.
         let (mut stdin_w, stdin_r) = tokio::io::duplex(8192);
@@ -1854,10 +1951,7 @@ mod tests {
 
         // First request succeeds -> at least one byte written to stdout.
         use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
-        stdin_w
-            .write_all(b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-03-26\",\"capabilities\":{},\"clientInfo\":{\"name\":\"t\",\"version\":\"0.1\"}}}\n")
-            .await
-            .unwrap();
+        stdin_w.write_all(INITIALIZE_LINE).await.unwrap();
         stdin_w.flush().await.unwrap();
         let mut first = String::new();
         stdout_r.read_line(&mut first).await.unwrap();
@@ -1883,5 +1977,306 @@ mod tests {
             RelayOutcome::FailedMidSession(_) => {}
             other => panic!("expected FailedMidSession, got {other:?}"),
         }
+    }
+
+    // ---- Relay sessions register as daemon clients -----------------------
+
+    /// Positive as `i32` and above Linux `pid_max`, so a shutdown signal sent to
+    /// it reaches no process (never the test runner or a process group).
+    const DEAD_DAEMON_PID: u32 = 999_999_999;
+    const RELAY_CLIENT_PID: u32 = 4242;
+
+    fn clients_in_state(data_dir: &Path) -> Option<Vec<u32>> {
+        match read_state(data_dir).unwrap() {
+            Some(WebState::Ready { clients, .. }) => Some(clients),
+            _ => None,
+        }
+    }
+
+    async fn wait_for_clients(data_dir: &Path, expected: &[u32]) {
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        while clients_in_state(data_dir).as_deref() != Some(expected) {
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "clients never became {expected:?}, last: {:?}",
+                clients_in_state(data_dir)
+            );
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    }
+
+    /// Publish `ready` as the `Ready` record with no clients.
+    fn write_ready_record(data_dir: &Path, ready: &ReadyDaemon) {
+        let state = ready_state(
+            ready.daemon_pid.get(),
+            ready.port,
+            ready.auth_token.as_str(),
+            vec![],
+        );
+        write_state(data_dir, &state).unwrap();
+    }
+
+    /// Spawn `run_registered_relay` as `RELAY_CLIENT_PID` over duplex stdio;
+    /// returns the stdin writer, the stdout reader, and the relay task.
+    fn spawn_registered_relay(
+        data_dir: &Path,
+        ready: &ReadyDaemon,
+    ) -> (
+        tokio::io::DuplexStream,
+        tokio::io::BufReader<tokio::io::DuplexStream>,
+        tokio::task::JoinHandle<RelayOutcome>,
+    ) {
+        let (stdin_w, stdin_r) = tokio::io::duplex(8192);
+        let (stdout_w, stdout_r) = tokio::io::duplex(8192);
+        let data_dir = data_dir.to_path_buf();
+        let ready = ready.clone();
+        let relay = tokio::spawn(async move {
+            run_registered_relay(
+                &data_dir,
+                &ready,
+                RELAY_CLIENT_PID,
+                tokio::io::BufReader::new(stdin_r),
+                stdout_w,
+            )
+            .await
+        });
+        (stdin_w, tokio::io::BufReader::new(stdout_r), relay)
+    }
+
+    #[tokio::test]
+    async fn open_relay_session_keeps_daemon_alive_in_sweep() {
+        let dir = tempfile::tempdir().unwrap();
+        let (server, ready) = start_killable_server("reg-tok", DEAD_DAEMON_PID).await;
+        write_ready_record(dir.path(), &ready);
+        let (stdin_w, _stdout_r, relay) = spawn_registered_relay(dir.path(), &ready);
+
+        wait_for_clients(dir.path(), &[RELAY_CLIENT_PID]).await;
+        let probe = FakeProbe::with(&[DEAD_DAEMON_PID, RELAY_CLIENT_PID]);
+        let clients = cleanup_stale_state(dir.path(), &probe).unwrap().unwrap();
+        assert_eq!(clients, vec![RELAY_CLIENT_PID]);
+        let mut grace = None;
+        assert!(!should_shutdown(
+            &clients,
+            &mut grace,
+            Duration::from_secs(60)
+        ));
+
+        drop(stdin_w);
+        relay.await.unwrap();
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn relay_session_deregisters_on_clean_eof() {
+        let dir = tempfile::tempdir().unwrap();
+        let (server, ready) = start_killable_server("eof-tok", DEAD_DAEMON_PID).await;
+        write_ready_record(dir.path(), &ready);
+        let (stdin_w, _stdout_r, relay) = spawn_registered_relay(dir.path(), &ready);
+        wait_for_clients(dir.path(), &[RELAY_CLIENT_PID]).await;
+
+        drop(stdin_w);
+        match relay.await.unwrap() {
+            RelayOutcome::Completed => {}
+            other => panic!("expected Completed, got {other:?}"),
+        }
+        assert_eq!(clients_in_state(dir.path()), Some(vec![]));
+        server.abort();
+    }
+
+    const INITIALIZE_LINE: &[u8] = b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-03-26\",\"capabilities\":{},\"clientInfo\":{\"name\":\"t\",\"version\":\"0.1\"}}}\n";
+
+    #[tokio::test]
+    async fn relay_session_deregisters_when_connection_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let ready = ready_daemon(DEAD_DAEMON_PID, 1, "refused-tok");
+        write_ready_record(dir.path(), &ready);
+        let (mut stdin_w, _stdout_r, relay) = spawn_registered_relay(dir.path(), &ready);
+        wait_for_clients(dir.path(), &[RELAY_CLIENT_PID]).await;
+
+        use tokio::io::AsyncWriteExt;
+        stdin_w.write_all(INITIALIZE_LINE).await.unwrap();
+        stdin_w.flush().await.unwrap();
+
+        match relay.await.unwrap() {
+            RelayOutcome::FailedBeforeFirstByte(_) => {}
+            other => panic!("expected FailedBeforeFirstByte, got {other:?}"),
+        }
+        assert_eq!(clients_in_state(dir.path()), Some(vec![]));
+    }
+
+    #[tokio::test]
+    async fn relay_session_deregisters_when_daemon_dies_mid_session() {
+        let dir = tempfile::tempdir().unwrap();
+        let (server, ready) = start_killable_server("mid-reg-tok", DEAD_DAEMON_PID).await;
+        write_ready_record(dir.path(), &ready);
+        let (mut stdin_w, mut stdout_r, relay) = spawn_registered_relay(dir.path(), &ready);
+
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
+        stdin_w.write_all(INITIALIZE_LINE).await.unwrap();
+        stdin_w.flush().await.unwrap();
+        let mut first = String::new();
+        stdout_r.read_line(&mut first).await.unwrap();
+        assert!(!first.is_empty(), "should have received first response");
+        assert_eq!(clients_in_state(dir.path()), Some(vec![RELAY_CLIENT_PID]));
+
+        server.abort();
+        let _ = server.await;
+        stdin_w
+            .write_all(b"{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\"}\n")
+            .await
+            .unwrap();
+        stdin_w.flush().await.unwrap();
+
+        let outcome = tokio::time::timeout(Duration::from_secs(35), relay)
+            .await
+            .expect("relay should finish")
+            .expect("relay task should not panic");
+        match outcome {
+            RelayOutcome::FailedMidSession(_) => {}
+            other => panic!("expected FailedMidSession, got {other:?}"),
+        }
+        assert_eq!(clients_in_state(dir.path()), Some(vec![]));
+    }
+
+    /// A live process standing in for the daemon, so a shutdown signal is observable.
+    #[cfg(unix)]
+    struct StandInDaemon(std::process::Child);
+
+    #[cfg(unix)]
+    impl StandInDaemon {
+        fn spawn() -> Self {
+            Self(
+                std::process::Command::new("sleep")
+                    .arg("30")
+                    .spawn()
+                    .unwrap(),
+            )
+        }
+
+        fn pid(&self) -> u32 {
+            self.0.id()
+        }
+
+        /// Whether the process is still running after giving a signal time to land.
+        async fn alive_after_settle(&mut self) -> bool {
+            tokio::time::sleep(Duration::from_millis(200)).await;
+            self.0.try_wait().unwrap().is_none()
+        }
+    }
+
+    #[cfg(unix)]
+    impl Drop for StandInDaemon {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn last_relay_leaving_does_not_signal_daemon() {
+        let mut daemon = StandInDaemon::spawn();
+        let dir = tempfile::tempdir().unwrap();
+        let (server, ready) = start_killable_server("quiet-tok", daemon.pid()).await;
+        write_ready_record(dir.path(), &ready);
+        let (stdin_w, _stdout_r, relay) = spawn_registered_relay(dir.path(), &ready);
+        wait_for_clients(dir.path(), &[RELAY_CLIENT_PID]).await;
+
+        drop(stdin_w);
+        relay.await.unwrap();
+        assert_eq!(clients_in_state(dir.path()), Some(vec![]));
+        assert!(
+            daemon.alive_after_settle().await,
+            "daemon shutdown is left to its sweep"
+        );
+        server.abort();
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn deregister_client_signals_daemon_when_last_client_leaves() {
+        let mut daemon = StandInDaemon::spawn();
+        let dir = tempfile::tempdir().unwrap();
+        write_state(
+            dir.path(),
+            &ready_state(daemon.pid(), 9090, "tok", vec![1111]),
+        )
+        .unwrap();
+
+        deregister_client(dir.path(), 1111).unwrap();
+        assert!(!daemon.alive_after_settle().await);
+    }
+
+    #[test]
+    fn deregister_client_for_ignores_record_of_another_daemon() {
+        let dir = tempfile::tempdir().unwrap();
+        let other = ready_state(DEAD_DAEMON_PID + 1, 9090, "tok", vec![RELAY_CLIENT_PID]);
+        write_state(dir.path(), &other).unwrap();
+
+        deregister_client_for(
+            dir.path(),
+            DaemonPid::new(DEAD_DAEMON_PID).unwrap(),
+            RELAY_CLIENT_PID,
+        )
+        .unwrap();
+        assert_eq!(read_state(dir.path()).unwrap(), Some(other));
+    }
+
+    /// Run a registered relay against `initial` state (whose daemon is not the
+    /// one `ready` names) and assert it refuses without touching state or stdin.
+    async fn assert_relay_refuses_registration(initial: Option<WebState>) {
+        let dir = tempfile::tempdir().unwrap();
+        if let Some(state) = &initial {
+            write_state(dir.path(), state).unwrap();
+        }
+        let ready = ready_daemon(DEAD_DAEMON_PID, 1, "bound-tok");
+
+        let (mut stdin_w, stdin_r) = tokio::io::duplex(8192);
+        let (stdout_w, _stdout_r) = tokio::io::duplex(8192);
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
+        stdin_w.write_all(INITIALIZE_LINE).await.unwrap();
+        drop(stdin_w);
+        let mut reader = tokio::io::BufReader::new(stdin_r);
+
+        let outcome =
+            run_registered_relay(dir.path(), &ready, RELAY_CLIENT_PID, &mut reader, stdout_w).await;
+        match outcome {
+            RelayOutcome::FailedBeforeFirstByte(_) => {}
+            other => panic!("expected FailedBeforeFirstByte, got {other:?}"),
+        }
+        assert_eq!(read_state(dir.path()).unwrap(), initial, "state untouched");
+        let mut line = String::new();
+        reader.read_line(&mut line).await.unwrap();
+        assert_eq!(
+            line,
+            std::str::from_utf8(INITIALIZE_LINE).unwrap(),
+            "stdin not consumed"
+        );
+    }
+
+    #[tokio::test]
+    async fn registered_relay_refuses_when_no_state_file() {
+        assert_relay_refuses_registration(None).await;
+    }
+
+    #[tokio::test]
+    async fn registered_relay_refuses_when_slot_is_claiming() {
+        assert_relay_refuses_registration(Some(WebState::Claiming {
+            claimer_pid: 100,
+            port: 1,
+            since: now_unix_secs(),
+        }))
+        .await;
+    }
+
+    #[tokio::test]
+    async fn registered_relay_refuses_when_record_names_another_daemon() {
+        assert_relay_refuses_registration(Some(ready_state(
+            DEAD_DAEMON_PID + 1,
+            1,
+            "bound-tok",
+            vec![],
+        )))
+        .await;
     }
 }
