@@ -71,6 +71,8 @@ pub async fn serve(
     // when a daemon is proven Ready, and the relay-vs-standalone fallback lives
     // in exactly one place (gated on whether the daemon has spoken to the client).
     let discovery = web::daemon::discover(data_dir, &web::daemon::SysinfoProbe)?;
+    let mut stdin = tokio::io::stdin();
+    let mut replay = Vec::new();
     let spawn_web = match web::daemon::resolve_startup_mode(discovery, web) {
         web::daemon::StartupMode::Relay(ready) => {
             tracing::info!(
@@ -78,12 +80,16 @@ pub async fn serve(
                 daemon_pid = ready.daemon_pid.get(),
                 "daemon detected, attempting relay mode"
             );
-            match web::daemon::run_relay_mode(data_dir, &ready).await {
+            match web::daemon::run_relay_mode(data_dir, &ready, &mut stdin).await {
                 web::daemon::RelayOutcome::Completed => return Ok(()),
-                web::daemon::RelayOutcome::FailedBeforeFirstByte(e) => {
+                web::daemon::RelayOutcome::FailedBeforeFirstByte {
+                    error,
+                    replay: input,
+                } => {
                     // The client has not yet received anything from the daemon,
-                    // so a fresh standalone server is safe.
-                    tracing::warn!("relay connect failed, falling back to standalone: {e:#}");
+                    // so a fresh standalone server that replays its input is safe.
+                    tracing::warn!("relay connect failed, falling back to standalone: {error:#}");
+                    replay = input;
                     false
                 }
                 web::daemon::RelayOutcome::FailedMidSession(e) => {
@@ -189,7 +195,8 @@ pub async fn serve(
 
     // Run MCP server with signal handling for graceful shutdown. An MCP error is
     // held until cleanup below has run.
-    let mcp_future = mcp::serve(service);
+    let mcp_input = tokio::io::AsyncReadExt::chain(std::io::Cursor::new(replay), stdin);
+    let mcp_future = mcp::serve(service, mcp_input, tokio::io::stdout());
     let mcp_result: Result<()>;
 
     #[cfg(unix)]

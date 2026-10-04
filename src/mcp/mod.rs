@@ -153,11 +153,14 @@ impl ServerHandler for ErinraServer {
 
 // ── Server startup ──────────────────────────────────────────────────────
 
-/// Start the MCP server on stdio transport.
-pub async fn serve(service: MemoryService) -> anyhow::Result<()> {
+/// Run the MCP server over `reader`/`writer` (stdio in production) until the client disconnects.
+pub async fn serve<R, W>(service: MemoryService, reader: R, writer: W) -> anyhow::Result<()>
+where
+    R: tokio::io::AsyncRead + Send + Unpin + 'static,
+    W: tokio::io::AsyncWrite + Send + Unpin + 'static,
+{
     let server = ErinraServer::new(service);
-    let transport = rmcp::transport::io::stdio();
-    let mcp_service = server.serve(transport).await?;
+    let mcp_service = server.serve((reader, writer)).await?;
     mcp_service.waiting().await?;
     Ok(())
 }

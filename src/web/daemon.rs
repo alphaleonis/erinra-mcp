@@ -1013,13 +1013,44 @@ pub enum RelayOutcome {
     Completed,
     /// The relay failed before the daemon produced any output (e.g. connection
     /// refused). The client has not yet received a response from the daemon, so
-    /// it is safe to fall back to a fresh standalone server.
-    FailedBeforeFirstByte(anyhow::Error),
+    /// it is safe to fall back to a fresh standalone server, which must read
+    /// `replay` (every byte the relay took from its reader) before the rest.
+    FailedBeforeFirstByte {
+        error: anyhow::Error,
+        replay: Vec<u8>,
+    },
     /// The relay failed *after* at least one byte was written to stdout. The MCP
     /// client has already begun a session with the daemon and will not
     /// re-initialize with a new server, so the caller MUST fail loudly and never
     /// silently restart.
     FailedMidSession(anyhow::Error),
+}
+
+/// A reader wrapper that keeps a copy of every byte read until the client has
+/// been written to, so a pre-first-byte fallback can replay the input.
+struct ReplayRecorder<R> {
+    inner: R,
+    recorded: Vec<u8>,
+    wrote: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl<R: tokio::io::AsyncRead + Unpin> tokio::io::AsyncRead for ReplayRecorder<R> {
+    fn poll_read(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        let start = buf.filled().len();
+        let res = std::pin::Pin::new(&mut self.inner).poll_read(cx, buf);
+        if self.wrote.load(std::sync::atomic::Ordering::SeqCst) {
+            // Fallback is no longer possible; stop holding input.
+            self.recorded = Vec::new();
+        } else if let std::task::Poll::Ready(Ok(())) = &res {
+            let read = &buf.filled()[start..];
+            self.recorded.extend_from_slice(read);
+        }
+        res
+    }
 }
 
 /// A writer wrapper that records whether any byte has been written through it.
@@ -1067,15 +1098,20 @@ impl<W: tokio::io::AsyncWrite + Unpin> tokio::io::AsyncWrite for FirstByteTracke
 /// The `FailedBeforeFirstByte` / `FailedMidSession` distinction is what makes the
 /// silent-restart footgun structurally impossible: the caller can only fall back
 /// to standalone in the pre-byte case.
-pub async fn run_relay_mode(data_dir: &Path, ready: &ReadyDaemon) -> RelayOutcome {
-    let stdin = tokio::io::BufReader::new(tokio::io::stdin());
+///
+/// `stdin` is borrowed so a fallback can serve the replay followed by the rest of it.
+pub async fn run_relay_mode(
+    data_dir: &Path,
+    ready: &ReadyDaemon,
+    stdin: &mut tokio::io::Stdin,
+) -> RelayOutcome {
     let stdout = tokio::io::stdout();
     run_registered_relay(data_dir, ready, std::process::id(), stdin, stdout).await
 }
 
 /// Register → relay → deregister, so the daemon's sweep counts this session as a
 /// live client. A failed registration returns `FailedBeforeFirstByte` without
-/// reading stdin.
+/// reading stdin, so its replay is empty.
 pub async fn run_registered_relay<R, W>(
     data_dir: &Path,
     ready: &ReadyDaemon,
@@ -1084,11 +1120,14 @@ pub async fn run_registered_relay<R, W>(
     writer: W,
 ) -> RelayOutcome
 where
-    R: tokio::io::AsyncBufRead + Unpin,
+    R: tokio::io::AsyncRead + Unpin,
     W: tokio::io::AsyncWrite + Unpin,
 {
-    if let Err(e) = register_client_for(data_dir, ready, client_pid) {
-        return RelayOutcome::FailedBeforeFirstByte(e);
+    if let Err(error) = register_client_for(data_dir, ready, client_pid) {
+        return RelayOutcome::FailedBeforeFirstByte {
+            error,
+            replay: Vec::new(),
+        };
     }
     let outcome = run_relay_mode_with(ready, reader, writer).await;
     // Never signal: a relay may leave while the daemon is still starting, or
@@ -1103,7 +1142,7 @@ where
 /// `DuplexStream`s.
 pub async fn run_relay_mode_with<R, W>(ready: &ReadyDaemon, reader: R, writer: W) -> RelayOutcome
 where
-    R: tokio::io::AsyncBufRead + Unpin,
+    R: tokio::io::AsyncRead + Unpin,
     W: tokio::io::AsyncWrite + Unpin,
 {
     let wrote = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -1111,14 +1150,22 @@ where
         inner: writer,
         wrote: wrote.clone(),
     };
+    let mut recorded = tokio::io::BufReader::new(ReplayRecorder {
+        inner: reader,
+        recorded: Vec::new(),
+        wrote: wrote.clone(),
+    });
 
-    match crate::relay::run_relay(reader, tracked, ready).await {
+    match crate::relay::run_relay(&mut recorded, tracked, ready).await {
         Ok(()) => RelayOutcome::Completed,
-        Err(e) => {
+        Err(error) => {
             if wrote.load(std::sync::atomic::Ordering::SeqCst) {
-                RelayOutcome::FailedMidSession(e)
+                RelayOutcome::FailedMidSession(error)
             } else {
-                RelayOutcome::FailedBeforeFirstByte(e)
+                RelayOutcome::FailedBeforeFirstByte {
+                    error,
+                    replay: recorded.into_inner().recorded,
+                }
             }
         }
     }
@@ -1851,21 +1898,24 @@ mod tests {
     use crate::service::{MemoryService, ServiceConfig};
     use crate::web::AppState;
 
+    fn memory_service() -> MemoryService {
+        let db = Database::open_in_memory(&DbConfig::default()).unwrap();
+        MemoryService::new(
+            Arc::new(Mutex::new(db)),
+            Arc::new(MockEmbedder::new(768)),
+            None,
+            ServiceConfig::default(),
+        )
+    }
+
     /// Start a real Axum server bound to an ephemeral port; returns a handle that
     /// can be aborted to simulate the daemon dying, plus a `ReadyDaemon`.
     async fn start_killable_server(
         token: &str,
         daemon_pid: u32,
     ) -> (tokio::task::JoinHandle<()>, ReadyDaemon) {
-        let db = Database::open_in_memory(&DbConfig::default()).unwrap();
-        let service = MemoryService::new(
-            Arc::new(Mutex::new(db)),
-            Arc::new(MockEmbedder::new(768)),
-            None,
-            ServiceConfig::default(),
-        );
         let state = AppState {
-            service,
+            service: memory_service(),
             auth_token: token.to_string(),
         };
         let app = crate::web::app_router(state);
@@ -1898,7 +1948,7 @@ mod tests {
         let outcome =
             run_relay_mode_with(&ready, tokio::io::BufReader::new(stdin_r), stdout_w).await;
         match outcome {
-            RelayOutcome::FailedBeforeFirstByte(_) => {}
+            RelayOutcome::FailedBeforeFirstByte { .. } => {}
             other => panic!("expected FailedBeforeFirstByte, got {other:?}"),
         }
     }
@@ -2066,10 +2116,62 @@ mod tests {
         stdin_w.flush().await.unwrap();
 
         match relay.await.unwrap() {
-            RelayOutcome::FailedBeforeFirstByte(_) => {}
+            RelayOutcome::FailedBeforeFirstByte { .. } => {}
             other => panic!("expected FailedBeforeFirstByte, got {other:?}"),
         }
         assert_eq!(clients_in_state(dir.path()), Some(vec![]));
+    }
+
+    const INITIALIZED_LINE: &[u8] =
+        b"{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}\n";
+    const TOOLS_LIST_LINE: &[u8] = b"{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\"}\n";
+
+    /// Read one JSON-RPC line from the standalone server's stdout.
+    async fn read_response(
+        stdout: &mut tokio::io::BufReader<tokio::io::DuplexStream>,
+    ) -> serde_json::Value {
+        use tokio::io::AsyncBufReadExt;
+        let mut line = String::new();
+        tokio::time::timeout(Duration::from_secs(5), stdout.read_line(&mut line))
+            .await
+            .expect("standalone server should respond")
+            .unwrap();
+        serde_json::from_str(&line).unwrap()
+    }
+
+    #[tokio::test]
+    async fn standalone_fallback_answers_input_the_refused_relay_consumed() {
+        let ready = ready_daemon(DEAD_DAEMON_PID, 1, "fallback-tok");
+        let (mut stdin_w, mut stdin_r) = tokio::io::duplex(8192);
+        let (stdout_w, stdout_r) = tokio::io::duplex(8192);
+
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        // Both lines are buffered by the relay when its first POST is refused.
+        stdin_w.write_all(INITIALIZE_LINE).await.unwrap();
+        stdin_w.write_all(INITIALIZED_LINE).await.unwrap();
+        stdin_w.flush().await.unwrap();
+
+        let replay = match run_relay_mode_with(&ready, &mut stdin_r, tokio::io::sink()).await {
+            RelayOutcome::FailedBeforeFirstByte { replay, .. } => replay,
+            other => panic!("expected FailedBeforeFirstByte, got {other:?}"),
+        };
+
+        let input = std::io::Cursor::new(replay).chain(stdin_r);
+        let server = tokio::spawn(crate::mcp::serve(memory_service(), input, stdout_w));
+        let mut stdout = tokio::io::BufReader::new(stdout_r);
+
+        let init = read_response(&mut stdout).await;
+        assert_eq!(init["id"], 1);
+        assert!(init["result"]["serverInfo"].is_object(), "got {init}");
+
+        stdin_w.write_all(TOOLS_LIST_LINE).await.unwrap();
+        stdin_w.flush().await.unwrap();
+        let tools = read_response(&mut stdout).await;
+        assert_eq!(tools["id"], 2);
+        assert!(tools["result"]["tools"].is_array(), "got {tools}");
+
+        drop(stdin_w);
+        server.await.unwrap().unwrap();
     }
 
     #[tokio::test]
@@ -2209,7 +2311,7 @@ mod tests {
         let outcome =
             run_registered_relay(dir.path(), &ready, RELAY_CLIENT_PID, &mut reader, stdout_w).await;
         match outcome {
-            RelayOutcome::FailedBeforeFirstByte(_) => {}
+            RelayOutcome::FailedBeforeFirstByte { .. } => {}
             other => panic!("expected FailedBeforeFirstByte, got {other:?}"),
         }
         assert_eq!(read_state(dir.path()).unwrap(), initial, "state untouched");
