@@ -47,11 +47,15 @@ where
             serde_json::from_str(trimmed).context("failed to parse JSON-RPC message")?;
         let is_request = msg.get("id").is_some();
 
-        let response = client
+        let mut request = client
             .post(&mcp_url)
             .header("Content-Type", "application/json")
             .header("Accept", "application/json, text/event-stream")
-            .header("Authorization", &auth_header)
+            .header("Authorization", &auth_header);
+        for (name, value) in protocol_headers(&msg) {
+            request = request.header(name, value);
+        }
+        let response = request
             .body(trimmed.to_string())
             .send()
             .await
@@ -97,6 +101,55 @@ where
     }
 
     Ok(())
+}
+
+/// The HTTP headers an MCP Streamable HTTP client derives from a message body.
+///
+/// A 2026-07-28 client carries its protocol version in `params._meta`, and the
+/// daemon rejects such requests unless the version, method and name also arrive
+/// as headers.
+fn protocol_headers(msg: &serde_json::Value) -> Vec<(&'static str, String)> {
+    use rmcp::transport::common::http_header::{
+        HEADER_MCP_METHOD, HEADER_MCP_NAME, HEADER_MCP_PROTOCOL_VERSION,
+    };
+
+    let mut headers = Vec::new();
+    let Some(method) = msg.get("method").and_then(|m| m.as_str()) else {
+        return headers;
+    };
+    let params = msg.get("params");
+    if let Some(version) = params
+        .and_then(|p| p.get("_meta"))
+        .and_then(|m| m.get("io.modelcontextprotocol/protocolVersion"))
+        .and_then(|v| v.as_str())
+    {
+        headers.push((HEADER_MCP_PROTOCOL_VERSION, version.to_string()));
+    }
+    headers.push((HEADER_MCP_METHOD, method.to_string()));
+
+    let name_key = match method {
+        "tools/call" | "prompts/get" => Some("name"),
+        "resources/read" | "resources/subscribe" | "resources/unsubscribe" => Some("uri"),
+        "tasks/get" | "tasks/update" | "tasks/cancel" => Some("taskId"),
+        _ => None,
+    };
+    // Values needing the spec's Base64 header encoding are left off; the daemon
+    // then rejects the request, which the client sees as an error response.
+    if let Some(name) = name_key
+        .and_then(|key| params?.get(key)?.as_str())
+        .filter(|name| is_plain_header_value(name))
+    {
+        headers.push((HEADER_MCP_NAME, name.to_string()));
+    }
+    headers
+}
+
+/// True if `value` can be sent verbatim under SEP-2243 (no Base64 wrapping).
+fn is_plain_header_value(value: &str) -> bool {
+    let padded = value.starts_with([' ', '\t']) || value.ends_with([' ', '\t']);
+    let looks_encoded = value.starts_with("=?base64?") && value.ends_with("?=");
+    let printable_ascii = value.chars().all(|c| (' '..='~').contains(&c));
+    printable_ascii && !padded && !looks_encoded
 }
 
 #[cfg(test)]
@@ -377,6 +430,136 @@ mod tests {
         assert!(
             result.is_ok(),
             "relay should return Ok on EOF, got: {result:?}"
+        );
+    }
+
+    /// Per-request `_meta` a 2026-07-28 client sends instead of initializing.
+    fn modern_meta() -> serde_json::Value {
+        serde_json::json!({
+            "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+            "io.modelcontextprotocol/clientCapabilities": {}
+        })
+    }
+
+    #[tokio::test]
+    async fn relay_forwards_modern_server_discover() {
+        let ready = start_test_server().await;
+        let mut harness = RelayHarness::start(&ready).await;
+
+        harness
+            .send(&serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "server/discover",
+                "params": {"_meta": modern_meta()}
+            }))
+            .await;
+
+        let response = harness.recv().await;
+        assert!(response["error"].is_null(), "got error: {response}");
+        assert!(response["result"].is_object(), "got: {response}");
+    }
+
+    #[tokio::test]
+    async fn relay_forwards_modern_tool_call() {
+        let ready = start_test_server().await;
+        let mut harness = RelayHarness::start(&ready).await;
+
+        harness
+            .send(&serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/call",
+                "params": {"name": "discover", "arguments": {}, "_meta": modern_meta()}
+            }))
+            .await;
+
+        let response = harness.recv().await;
+        assert!(response["error"].is_null(), "got error: {response}");
+        assert_eq!(response["result"]["isError"], false, "got: {response}");
+    }
+
+    fn headers_for(msg: serde_json::Value) -> Vec<(&'static str, String)> {
+        protocol_headers(&msg)
+    }
+
+    #[test]
+    fn legacy_tool_call_gets_method_and_name_but_no_version() {
+        let headers = headers_for(serde_json::json!({
+            "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+            "params": {"name": "store", "arguments": {}}
+        }));
+        assert_eq!(
+            headers,
+            vec![
+                ("Mcp-Method", "tools/call".to_string()),
+                ("Mcp-Name", "store".to_string())
+            ]
+        );
+    }
+
+    #[test]
+    fn initialize_protocol_version_is_not_promoted_to_header() {
+        let headers = headers_for(serde_json::json!({
+            "jsonrpc": "2.0", "id": 1, "method": "initialize",
+            "params": {"protocolVersion": "2025-11-25", "capabilities": {}}
+        }));
+        assert_eq!(headers, vec![("Mcp-Method", "initialize".to_string())]);
+    }
+
+    #[test]
+    fn modern_meta_version_becomes_header() {
+        let headers = headers_for(serde_json::json!({
+            "jsonrpc": "2.0", "method": "notifications/cancelled",
+            "params": {"_meta": modern_meta()}
+        }));
+        assert_eq!(
+            headers,
+            vec![
+                ("MCP-Protocol-Version", "2026-07-28".to_string()),
+                ("Mcp-Method", "notifications/cancelled".to_string())
+            ]
+        );
+    }
+
+    #[test]
+    fn resource_methods_take_name_from_uri() {
+        let headers = headers_for(serde_json::json!({
+            "jsonrpc": "2.0", "id": 1, "method": "resources/read",
+            "params": {"uri": "file:///notes.md"}
+        }));
+        assert!(headers.contains(&("Mcp-Name", "file:///notes.md".to_string())));
+    }
+
+    #[test]
+    fn names_needing_base64_are_left_off() {
+        for name in [
+            "caf\u{e9}",
+            " lead",
+            "trail\t",
+            "=?base64?abc?=",
+            "line\nbreak",
+        ] {
+            let headers = headers_for(serde_json::json!({
+                "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                "params": {"name": name}
+            }));
+            assert!(
+                headers.iter().all(|(h, _)| *h != "Mcp-Name"),
+                "{name:?} should not be sent verbatim"
+            );
+        }
+        let headers = headers_for(serde_json::json!({
+            "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+            "params": {"name": "has inner space and =?base64?"}
+        }));
+        assert!(headers.contains(&("Mcp-Name", "has inner space and =?base64?".to_string())));
+    }
+
+    #[test]
+    fn responses_get_no_headers() {
+        assert!(
+            headers_for(serde_json::json!({"jsonrpc": "2.0", "id": 1, "result": {}})).is_empty()
         );
     }
 }

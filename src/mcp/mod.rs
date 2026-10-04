@@ -113,7 +113,7 @@ impl ErinraServer {
 // ── ServerHandler impl ──────────────────────────────────────────────────
 
 impl ServerHandler for ErinraServer {
-    fn get_info(&self) -> ServerInfo {
+    fn get_info(&self) -> ServerConfig {
         // Read cached instructions (no DB mutex needed — updated asynchronously
         // after mutations via refresh_instructions).
         let instructions = self
@@ -121,7 +121,7 @@ impl ServerHandler for ErinraServer {
             .read()
             .expect("instructions lock poisoned")
             .clone();
-        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+        ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
             .with_server_info(Implementation::new("erinra", env!("CARGO_PKG_VERSION")))
             .with_instructions(instructions)
     }
@@ -141,7 +141,7 @@ impl ServerHandler for ErinraServer {
         &self,
         request: CallToolRequestParams,
         context: RequestContext<RoleServer>,
-    ) -> impl std::future::Future<Output = Result<CallToolResult, ErrorData>> + Send + '_ {
+    ) -> impl std::future::Future<Output = Result<CallToolResponse, ErrorData>> + Send + '_ {
         let tool_context = ToolCallContext::new(self, request, context);
         async move { self.tool_router.call(tool_context).await }
     }
@@ -171,12 +171,12 @@ where
 pub(crate) fn json_result<T: Serialize>(value: &T) -> Result<CallToolResult, ErrorData> {
     let json = serde_json::to_string(value)
         .map_err(|e| ErrorData::internal_error(format!("JSON serialization failed: {e}"), None))?;
-    Ok(CallToolResult::success(vec![Content::text(json)]))
+    Ok(CallToolResult::success(vec![ContentBlock::text(json)]))
 }
 
 /// Build a tool-level error result (isError: true, visible to LLM).
 pub(crate) fn tool_error(msg: impl Into<String>) -> Result<CallToolResult, ErrorData> {
-    Ok(CallToolResult::error(vec![Content::text(msg.into())]))
+    Ok(CallToolResult::error(vec![ContentBlock::text(msg.into())]))
 }
 
 /// Map an internal error to ErrorData.
@@ -211,8 +211,8 @@ mod tests {
     }
 
     fn extract_text(result: &CallToolResult) -> &str {
-        match &result.content[0].raw {
-            RawContent::Text(t) => &t.text,
+        match &result.content[0] {
+            ContentBlock::Text(t) => &t.text,
             _ => panic!("expected text content"),
         }
     }
@@ -501,5 +501,45 @@ mod tests {
         assert_eq!(resp.links.outgoing[0].id, "link-1");
         assert!(resp.links.incoming.is_empty());
         assert_eq!(resp.access_count, 5);
+    }
+
+    #[tokio::test]
+    async fn serve_answers_modern_tool_call_without_initialize() {
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
+
+        let (mut client_w, server_r) = tokio::io::duplex(8192);
+        let (server_w, client_r) = tokio::io::duplex(8192);
+        let server = tokio::spawn(serve(test_service(), server_r, server_w));
+
+        let request = serde_json::json!({
+            "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+            "params": {
+                "name": "discover", "arguments": {},
+                "_meta": {
+                    "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+                    "io.modelcontextprotocol/clientCapabilities": {}
+                }
+            }
+        });
+        client_w
+            .write_all(format!("{request}\n").as_bytes())
+            .await
+            .unwrap();
+
+        let mut line = String::new();
+        let mut client_r = tokio::io::BufReader::new(client_r);
+        tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            client_r.read_line(&mut line),
+        )
+        .await
+        .expect("server should answer")
+        .unwrap();
+        let response: serde_json::Value = serde_json::from_str(&line).unwrap();
+        assert_eq!(response["id"], 1);
+        assert_eq!(response["result"]["isError"], false, "got: {response}");
+
+        drop(client_w);
+        server.await.unwrap().unwrap();
     }
 }

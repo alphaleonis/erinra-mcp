@@ -159,12 +159,12 @@ Apache License 2.0
 https://gitlab.com/kornelski/dunce
 Copyright [Kornel <kornel@geekhood.net>]
 ----------------------------------------------------------------------
-rmcp-macros 1.8.0
+rmcp-macros 3.5.0
 Apache License 2.0
 https://github.com/modelcontextprotocol/rust-sdk/
 
 ----------------------------------------------------------------------
-rmcp 1.8.0
+rmcp 3.5.0
 Apache License 2.0
 https://github.com/modelcontextprotocol/rust-sdk/
 
@@ -1439,7 +1439,7 @@ MIT License
 https://github.com/TedDriggs/darling
 Copyright [Ted Driggs <ted.driggs@outlook.com>]
 ----------------------------------------------------------------------
-darling 0.23.0
+darling 0.24.1
 MIT License
 https://github.com/TedDriggs/darling
 Copyright [Ted Driggs <ted.driggs@outlook.com>]
@@ -1449,7 +1449,7 @@ MIT License
 https://github.com/TedDriggs/darling
 Copyright [Ted Driggs <ted.driggs@outlook.com>]
 ----------------------------------------------------------------------
-darling_core 0.23.0
+darling_core 0.24.1
 MIT License
 https://github.com/TedDriggs/darling
 Copyright [Ted Driggs <ted.driggs@outlook.com>]
@@ -1459,7 +1459,7 @@ MIT License
 https://github.com/TedDriggs/darling
 Copyright [Ted Driggs <ted.driggs@outlook.com>]
 ----------------------------------------------------------------------
-darling_macro 0.23.0
+darling_macro 0.24.1
 MIT License
 https://github.com/TedDriggs/darling
 Copyright [Ted Driggs <ted.driggs@outlook.com>]

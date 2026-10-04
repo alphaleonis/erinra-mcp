@@ -9,7 +9,7 @@ repository = "https://github.com/alphaleonis/erinra-mcp"
 
 [dependencies]
 # MCP server
-rmcp = { version = "1.3", features = ["server", "transport-io", "macros", "transport-streamable-http-server"] }
+rmcp = { version = "3.5", features = ["server", "transport-io", "macros", "transport-streamable-http-server"] }
 schemars = "1"
 
 # SQLite + vector search

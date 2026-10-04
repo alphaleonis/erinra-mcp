@@ -75,7 +75,7 @@ fn build_mcp_service(
 
     // Stateless mode: no sessions, plain JSON responses (no SSE framing).
     let config_http = StreamableHttpServerConfig::default()
-        .with_stateful_mode(false)
+        .with_legacy_session_mode(false)
         .with_json_response(true);
 
     StreamableHttpService::new(
