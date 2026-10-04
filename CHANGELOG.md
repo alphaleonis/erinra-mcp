@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## v0.2.1 - 2026-10-04
+
+### Fixed
+- Relay sessions now register as daemon clients, so the daemon no longer shuts down under active relays once the process that spawned it exits (e.g. Claude Code's version-negotiation probe).
+- The daemon binds its port before advertising itself as ready, so a `serve` started while the daemon is loading models now relays to it instead of falling back to standalone. A port conflict or invalid bind address is reported in about half a second instead of after a 20-second wait.
+- A relay that falls back to standalone no longer hangs the MCP session: input the relay had already read (including `initialize`) is replayed to the standalone server.
+
 ## v0.2.0 - 2026-06-21
 
 ### Added
