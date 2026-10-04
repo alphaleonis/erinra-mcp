@@ -100,7 +100,13 @@ jobs:
         uses: cargo-bins/cargo-binstall@main
 
       - name: Install cargo-about
-        run: cargo binstall --no-confirm cargo-about
+        # Unauthenticated API lookups can be rate-limited, and binstall's source fallback
+        # installs no binary (cargo-about needs `--features cli`) yet still succeeds.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cargo binstall --no-confirm cargo-about
+          cargo about --version
 
       - name: CI pipeline
         run: mise run ci
