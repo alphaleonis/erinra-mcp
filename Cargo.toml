@@ -75,6 +75,10 @@ pkg-fmt = "zip"
 [features]
 test-utils = []
 
+[[example]]
+name = "seed_test_db"
+required-features = ["test-utils"]
+
 [profile.release]
 lto = true
 strip = true
