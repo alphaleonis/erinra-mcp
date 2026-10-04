@@ -131,10 +131,12 @@ impl ServerHandler for ErinraServer {
         _request: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
     ) -> impl std::future::Future<Output = Result<ListToolsResult, ErrorData>> + Send + '_ {
-        std::future::ready(Ok(ListToolsResult {
-            tools: self.tool_router.list_all(),
-            ..Default::default()
-        }))
+        // 2026-07-28 clients reject list results without cache hints; rmcp leaves them unset.
+        std::future::ready(Ok(ListToolsResult::with_all_items(
+            self.tool_router.list_all(),
+        )
+        .with_ttl_ms(0)
+        .with_cache_scope(CacheScope::Private)))
     }
 
     fn call_tool(
@@ -538,6 +540,53 @@ mod tests {
         let response: serde_json::Value = serde_json::from_str(&line).unwrap();
         assert_eq!(response["id"], 1);
         assert_eq!(response["result"]["isError"], false, "got: {response}");
+
+        drop(client_w);
+        server.await.unwrap().unwrap();
+    }
+
+    #[tokio::test]
+    async fn modern_tools_list_carries_required_cache_hints() {
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
+
+        let (mut client_w, server_r) = tokio::io::duplex(8192);
+        let (server_w, client_r) = tokio::io::duplex(65536);
+        let server = tokio::spawn(serve(test_service(), server_r, server_w));
+
+        let request = serde_json::json!({
+            "jsonrpc": "2.0", "id": 1, "method": "tools/list",
+            "params": {
+                "_meta": {
+                    "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+                    "io.modelcontextprotocol/clientCapabilities": {}
+                }
+            }
+        });
+        client_w
+            .write_all(format!("{request}\n").as_bytes())
+            .await
+            .unwrap();
+
+        let mut line = String::new();
+        let mut client_r = tokio::io::BufReader::new(client_r);
+        tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            client_r.read_line(&mut line),
+        )
+        .await
+        .expect("server should answer")
+        .unwrap();
+        let response: serde_json::Value = serde_json::from_str(&line).unwrap();
+        let result = &response["result"];
+        assert!(result["tools"].is_array(), "got: {response}");
+        assert!(
+            result["ttlMs"].is_u64(),
+            "ttlMs must be a number, got: {result}"
+        );
+        assert!(
+            matches!(result["cacheScope"].as_str(), Some("public" | "private")),
+            "cacheScope must be public or private, got: {result}"
+        );
 
         drop(client_w);
         server.await.unwrap().unwrap();
