@@ -938,13 +938,17 @@ pub fn should_shutdown(
 /// Clean up stale daemon state caused by crashed processes, and report the live
 /// client list of a healthy daemon.
 ///
-/// - No state file / unparseable: returns `None`.
+/// - No data dir, no state file, or unparseable: returns `None`.
 /// - `Ready` with a dead daemon PID: removes state file, returns `None`.
 /// - `Claiming` (any): left untouched by the sweep (publish/abandon owns it),
 ///   returns `None` (no client list to report).
 /// - `Ready` with a live daemon: sweeps dead client PIDs, writes back the
 ///   cleaned state, returns `Some(clients)`.
 pub fn cleanup_stale_state(data_dir: &Path, probe: &dyn PidProbe) -> Result<Option<Vec<u32>>> {
+    // Without this, the lock-file open fails on every sweep and the daemon never exits.
+    if !data_dir.exists() {
+        return Ok(None);
+    }
     let mut live_clients: Option<Vec<u32>> = None;
     update_state(data_dir, |state| match state {
         None => None,
@@ -1738,6 +1742,18 @@ mod tests {
             cleanup_stale_state(dir.path(), &FakeProbe::none()).unwrap(),
             None
         );
+    }
+
+    #[test]
+    fn cleanup_returns_none_when_data_dir_was_removed() {
+        let dir = tempfile::tempdir().unwrap();
+        write_state(dir.path(), &ready_state(1234, 9090, "tok", vec![100])).unwrap();
+        let data_dir = dir.path().to_path_buf();
+        dir.close().unwrap();
+
+        let result = cleanup_stale_state(&data_dir, &FakeProbe::with(&[1234, 100])).unwrap();
+        assert_eq!(result, None);
+        assert!(!data_dir.exists(), "cleanup must not recreate the data dir");
     }
 
     #[test]
