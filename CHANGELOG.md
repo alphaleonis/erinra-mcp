@@ -11,6 +11,7 @@ All notable changes to this project will be documented in this file.
 - The daemon binds its port before advertising itself as ready, so a `serve` started while the daemon is loading models now relays to it instead of falling back to standalone. A port conflict or invalid bind address is reported in about half a second instead of after a 20-second wait.
 - A relay that falls back to standalone no longer hangs the MCP session: input the relay had already read (including `initialize`) is replayed to the standalone server.
 - The dashboard daemon now shuts down when its data directory is deleted, instead of running indefinitely and holding its port.
+- `tools/list` now includes the `ttlMs` and `cacheScope` cache hints that MCP protocol 2026-07-28 requires; without them Claude Code rejected the tool list and no erinra tools were available.
 
 ### Added
 - Support for MCP protocol version 2026-07-28 clients, which skip `initialize` and send per-request metadata: the standalone server now serves them, and relay mode forwards the `MCP-Protocol-Version`, `Mcp-Method` and `Mcp-Name` headers the daemon requires.
