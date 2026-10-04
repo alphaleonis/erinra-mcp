@@ -12,11 +12,13 @@
 //! - [`WebState::Claiming`] — a `serve`/`dash` caller has reserved the slot and
 //!   is spawning the daemon. It carries **no** token by design: a claim is not
 //!   usable.
-//! - [`WebState::Ready`] — the daemon is up. This is the **only** variant that
-//!   carries a real PID + non-empty auth token together. Both are wrapped in
-//!   newtypes ([`DaemonPid`], [`AuthToken`]) whose constructors and `Deserialize`
-//!   impls reject the `0` / `""` sentinels, so a half-written "ready" record can
-//!   neither be constructed in code nor observed off disk.
+//! - [`WebState::Ready`] — the daemon is listening on `port`; requests queue in
+//!   the backlog until it finishes loading and starts serving. This is the
+//!   **only** variant that carries a real PID + non-empty auth token together.
+//!   Both are wrapped in newtypes ([`DaemonPid`], [`AuthToken`]) whose
+//!   constructors and `Deserialize` impls reject the `0` / `""` sentinels, so a
+//!   half-written "ready" record can neither be constructed in code nor observed
+//!   off disk.
 //!
 //! Liveness is injected behind the [`PidProbe`] port so coordination logic can
 //! be exercised in tests without spawning real processes.
@@ -169,8 +171,8 @@ pub enum WebState {
         /// Epoch seconds when the claim was taken (for age-out).
         since: u64,
     },
-    /// The daemon is up and usable. The **only** variant carrying a real PID +
-    /// non-empty token together.
+    /// The daemon is listening on `port` and usable. The **only** variant
+    /// carrying a real PID + non-empty token together.
     Ready {
         daemon_pid: DaemonPid,
         port: u16,
@@ -182,8 +184,8 @@ pub enum WebState {
 /// A proven-usable daemon: real PID + non-empty token + port together.
 ///
 /// Constructed only by reaping a [`WebState::Ready`] whose daemon is alive, or
-/// by [`DaemonClaim::publish`]. The relay path requires a value of this type, so
-/// it is structurally impossible to attempt a relay with placeholder creds.
+/// by [`bind_and_publish`]. The relay path requires a value of this type, so it
+/// is structurally impossible to attempt a relay with placeholder creds.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReadyDaemon {
     pub daemon_pid: DaemonPid,
@@ -449,8 +451,8 @@ pub fn discover(data_dir: &Path, probe: &dyn PidProbe) -> Result<Discovery> {
 
 /// Outcome of [`try_claim`].
 pub enum ClaimOutcome<'a> {
-    /// This caller now owns the claim and must [`DaemonClaim::publish`] (after a
-    /// successful spawn) or [`DaemonClaim::abandon`] it.
+    /// This caller now owns the claim and must [`DaemonClaim::abandon`] it if the
+    /// spawn fails; a spawned daemon resolves it itself.
     Claimed(DaemonClaim<'a>),
     /// A usable daemon already exists; relay to it.
     AlreadyReady(ReadyDaemon),
@@ -460,51 +462,14 @@ pub enum ClaimOutcome<'a> {
 
 /// An owned, in-progress claim on the daemon slot.
 ///
-/// Must be resolved by [`publish`](DaemonClaim::publish) (spawn succeeded) or
-/// [`abandon`](DaemonClaim::abandon) (spawn failed). It does not auto-clean on
-/// drop, mirroring the previous explicit-cleanup behavior.
+/// The spawned daemon resolves it via [`bind_and_publish`]; if the spawn fails,
+/// [`abandon`](DaemonClaim::abandon) it. It does not auto-clean on drop.
 pub struct DaemonClaim<'a> {
     data_dir: &'a Path,
     claimer_pid: u32,
-    port: u16,
 }
 
 impl<'a> DaemonClaim<'a> {
-    /// Promote a held claim to [`WebState::Ready`], asserting the current record
-    /// is still *our* `Claiming` claim (same claimer PID). Returns a proven
-    /// [`ReadyDaemon`].
-    pub fn publish(self, daemon_pid: DaemonPid, auth_token: AuthToken) -> Result<ReadyDaemon> {
-        let claimer_pid = self.claimer_pid;
-        let port = self.port;
-        let ready = ReadyDaemon {
-            daemon_pid,
-            port,
-            auth_token: auth_token.clone(),
-        };
-        let mut ok = false;
-        update_state(self.data_dir, |state| {
-            match &state {
-                Some(WebState::Claiming {
-                    claimer_pid: cur, ..
-                }) if *cur == claimer_pid => {
-                    ok = true;
-                    Some(WebState::Ready {
-                        daemon_pid,
-                        port,
-                        auth_token: auth_token.clone(),
-                        clients: vec![],
-                    })
-                }
-                // Our claim is gone or was taken over — do not clobber.
-                other => other.clone(),
-            }
-        })?;
-        if !ok {
-            anyhow::bail!("cannot publish: claim no longer held by this process");
-        }
-        Ok(ready)
-    }
-
     /// Release a held claim (spawn failed), removing our `Claiming` record.
     /// Only removes the record if it is still ours.
     pub fn abandon(self) -> Result<()> {
@@ -523,8 +488,7 @@ impl<'a> DaemonClaim<'a> {
 ///
 /// The daemon is a separate process re-exec'd by the claimer, so it cannot hold
 /// the claimer's [`DaemonClaim`]. Instead it promotes whatever record exists to
-/// `Ready`, preserving any client list. This is the daemon-side analogue of
-/// [`DaemonClaim::publish`]:
+/// `Ready`, preserving any client list:
 ///
 /// - over a `Claiming` record (the expected case) -> `Ready`, clients empty;
 /// - over an existing `Ready` (restart/race) -> `Ready` with new creds, clients
@@ -532,7 +496,7 @@ impl<'a> DaemonClaim<'a> {
 /// - over no record -> `Ready`, clients empty.
 ///
 /// Returns the proven [`ReadyDaemon`].
-pub fn publish_ready(
+fn publish_ready(
     data_dir: &Path,
     daemon_pid: DaemonPid,
     port: u16,
@@ -555,6 +519,52 @@ pub fn publish_ready(
         port,
         auth_token,
     })
+}
+
+/// Bind the daemon listener, then publish `Ready` with the bound port.
+///
+/// Connections that arrive before the caller starts serving wait in the kernel
+/// backlog. On bind failure the `Claiming` record for `port` is removed so the
+/// spawner's wait ends at its next poll.
+pub async fn bind_and_publish(
+    data_dir: &Path,
+    bind: &str,
+    port: u16,
+    daemon_pid: DaemonPid,
+    auth_token: AuthToken,
+) -> Result<(tokio::net::TcpListener, ReadyDaemon)> {
+    let listener = match bind_listener(bind, port).await {
+        Ok(listener) => listener,
+        Err(e) => {
+            if let Err(clear_err) = clear_claim_for_port(data_dir, port) {
+                tracing::warn!("failed to clear daemon claim after bind failure: {clear_err:#}");
+            }
+            return Err(e);
+        }
+    };
+    let bound_port = listener.local_addr()?.port();
+    let ready = publish_ready(data_dir, daemon_pid, bound_port, auth_token)?;
+    Ok((listener, ready))
+}
+
+async fn bind_listener(bind: &str, port: u16) -> Result<tokio::net::TcpListener> {
+    use anyhow::Context;
+
+    let addr: std::net::SocketAddr = format!("{bind}:{port}")
+        .parse()
+        .with_context(|| format!("invalid bind address: {bind}:{port}"))?;
+    tokio::net::TcpListener::bind(addr)
+        .await
+        .with_context(|| format!("failed to bind daemon listener on {addr}"))
+}
+
+/// Remove a `Claiming` record for `port`; any other record belongs to a different daemon.
+fn clear_claim_for_port(data_dir: &Path, port: u16) -> Result<()> {
+    update_state(data_dir, |state| match state {
+        Some(WebState::Claiming { port: claimed, .. }) if claimed == port => None,
+        other => other,
+    })?;
+    Ok(())
 }
 
 /// Attempt to claim the daemon slot for `claimer_pid` on `port`.
@@ -619,7 +629,6 @@ pub fn try_claim<'a>(
         ClaimDecision::Claimed => ClaimOutcome::Claimed(DaemonClaim {
             data_dir,
             claimer_pid,
-            port,
         }),
         ClaimDecision::AlreadyReady(ready) => ClaimOutcome::AlreadyReady(ready),
         ClaimDecision::AlreadyClaiming { claimer_pid, age } => {
@@ -1562,29 +1571,12 @@ mod tests {
     }
 
     #[test]
-    fn publish_promotes_claim_and_both_see_ready() {
+    fn try_claim_over_live_ready_returns_already_ready() {
         let dir = tempfile::tempdir().unwrap();
-        let probe = FakeProbe::with(&[100, 555]);
-        let claim = match try_claim(dir.path(), 100, 9090, &probe).unwrap() {
-            ClaimOutcome::Claimed(c) => c,
-            _ => panic!("should claim"),
-        };
-        let ready = claim
-            .publish(
-                DaemonPid::new(555).unwrap(),
-                AuthToken::new("daemon-tok").unwrap(),
-            )
-            .unwrap();
-        assert_eq!(ready, ready_daemon(555, 9090, "daemon-tok"));
-
-        // discover and a fresh try_claim both see Ready.
-        assert_eq!(
-            discover(dir.path(), &probe).unwrap(),
-            Discovery::Ready(ready_daemon(555, 9090, "daemon-tok"))
-        );
+        write_state(dir.path(), &ready_state(555, 9090, "daemon-tok", vec![])).unwrap();
         match try_claim(dir.path(), 200, 9090, &FakeProbe::with(&[200, 555])).unwrap() {
             ClaimOutcome::AlreadyReady(r) => assert_eq!(r, ready_daemon(555, 9090, "daemon-tok")),
-            _ => panic!("after publish a new caller should see AlreadyReady"),
+            _ => panic!("a live Ready record should yield AlreadyReady"),
         }
     }
 
@@ -1642,30 +1634,6 @@ mod tests {
             ClaimOutcome::Claimed(_) => {}
             _ => panic!("dead Ready daemon slot should be reclaimable"),
         }
-    }
-
-    #[test]
-    fn publish_fails_when_claim_no_longer_ours() {
-        let dir = tempfile::tempdir().unwrap();
-        let probe = FakeProbe::with(&[100, 200]);
-        let claim = match try_claim(dir.path(), 100, 9090, &probe).unwrap() {
-            ClaimOutcome::Claimed(c) => c,
-            _ => panic!("should claim"),
-        };
-        // Someone else overwrites the record with their own claim.
-        write_state(
-            dir.path(),
-            &WebState::Claiming {
-                claimer_pid: 200,
-                port: 9090,
-                since: now_unix_secs(),
-            },
-        )
-        .unwrap();
-        let err = claim
-            .publish(DaemonPid::new(555).unwrap(), AuthToken::new("tok").unwrap())
-            .unwrap_err();
-        assert!(err.to_string().contains("no longer held"), "got: {err}");
     }
 
     // ---- register / deregister ------------------------------------------
@@ -2278,5 +2246,182 @@ mod tests {
             vec![],
         )))
         .await;
+    }
+
+    // ---- Ready implies a bound listener ----------------------------------
+
+    fn test_daemon_pid() -> DaemonPid {
+        DaemonPid::new(DEAD_DAEMON_PID).unwrap()
+    }
+
+    #[tokio::test]
+    async fn bind_and_publish_reports_ready_on_bound_port_before_serving() {
+        let dir = tempfile::tempdir().unwrap();
+        let token = AuthToken::new("bound-tok").unwrap();
+
+        let (listener, ready) =
+            bind_and_publish(dir.path(), "127.0.0.1", 0, test_daemon_pid(), token.clone())
+                .await
+                .unwrap();
+
+        let bound_port = listener.local_addr().unwrap().port();
+        assert_ne!(bound_port, 0);
+        assert_eq!(ready.port, bound_port);
+        let probe = FakeProbe::with(&[DEAD_DAEMON_PID]);
+        assert_eq!(
+            discover(dir.path(), &probe).unwrap(),
+            Discovery::Ready(ready_daemon(DEAD_DAEMON_PID, bound_port, "bound-tok"))
+        );
+        // Nothing is accepting yet; the kernel backlog still completes the handshake.
+        tokio::time::timeout(
+            Duration::from_secs(5),
+            tokio::net::TcpStream::connect(("127.0.0.1", bound_port)),
+        )
+        .await
+        .expect("connect should not hang")
+        .expect("connect to a published Ready port should succeed");
+    }
+
+    #[tokio::test]
+    async fn relay_started_before_daemon_serves_completes() {
+        let dir = tempfile::tempdir().unwrap();
+        let (listener, ready) = bind_and_publish(
+            dir.path(),
+            "127.0.0.1",
+            0,
+            test_daemon_pid(),
+            AuthToken::new("early-tok").unwrap(),
+        )
+        .await
+        .unwrap();
+
+        let (mut stdin_w, stdin_r) = tokio::io::duplex(8192);
+        let (stdout_w, stdout_r) = tokio::io::duplex(8192);
+        let mut stdout_r = tokio::io::BufReader::new(stdout_r);
+        let ready_c = ready.clone();
+        let relay = tokio::spawn(async move {
+            run_relay_mode_with(&ready_c, tokio::io::BufReader::new(stdin_r), stdout_w).await
+        });
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
+        stdin_w.write_all(INITIALIZE_LINE).await.unwrap();
+        stdin_w.flush().await.unwrap();
+
+        // Stand-in for model loading: the request sits in the backlog meanwhile.
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        assert!(
+            !relay.is_finished(),
+            "relay must still be waiting on the unserved listener"
+        );
+        let db = Database::open_in_memory(&DbConfig::default()).unwrap();
+        let service = MemoryService::new(
+            Arc::new(Mutex::new(db)),
+            Arc::new(MockEmbedder::new(768)),
+            None,
+            ServiceConfig::default(),
+        );
+        let app = crate::web::app_router(AppState {
+            service,
+            auth_token: "early-tok".to_string(),
+        });
+        let server = tokio::spawn(async move {
+            let _ = axum::serve(listener, app).await;
+        });
+
+        let mut first = String::new();
+        tokio::time::timeout(Duration::from_secs(10), stdout_r.read_line(&mut first))
+            .await
+            .expect("initialize response should arrive")
+            .unwrap();
+        assert!(first.contains("\"id\":1"), "unexpected response: {first}");
+
+        drop(stdin_w);
+        let outcome = tokio::time::timeout(Duration::from_secs(10), relay)
+            .await
+            .expect("relay should finish")
+            .expect("relay task should not panic");
+        match outcome {
+            RelayOutcome::Completed => {}
+            other => panic!("expected Completed, got {other:?}"),
+        }
+        server.abort();
+    }
+
+    /// Run `bind_and_publish` on `bind:port` over `prior`; returns the error flag and resulting record.
+    async fn bind_and_publish_over(
+        prior: Option<WebState>,
+        bind: &str,
+        port: u16,
+    ) -> (tempfile::TempDir, bool, Option<WebState>) {
+        let dir = tempfile::tempdir().unwrap();
+        if let Some(state) = &prior {
+            write_state(dir.path(), state).unwrap();
+        }
+        let result = bind_and_publish(
+            dir.path(),
+            bind,
+            port,
+            test_daemon_pid(),
+            AuthToken::new("unused-tok").unwrap(),
+        )
+        .await;
+        let after = read_state(dir.path()).unwrap();
+        (dir, result.is_err(), after)
+    }
+
+    fn live_claim(claimer_pid: u32, port: u16) -> WebState {
+        WebState::Claiming {
+            claimer_pid,
+            port,
+            since: now_unix_secs(),
+        }
+    }
+
+    #[tokio::test]
+    async fn bind_failure_clears_claim_so_waiters_see_vacant() {
+        let occupant = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let taken_port = occupant.local_addr().unwrap().port();
+
+        let (dir, failed, _) =
+            bind_and_publish_over(Some(live_claim(100, taken_port)), "127.0.0.1", taken_port).await;
+
+        assert!(failed, "binding an occupied port must fail");
+        // The claimer is still alive, so only removing the record lets its wait end early.
+        let probe = FakeProbe::with(&[100]);
+        assert_eq!(discover(dir.path(), &probe).unwrap(), Discovery::Vacant);
+    }
+
+    #[tokio::test]
+    async fn unparsable_bind_address_clears_claim() {
+        let (_dir, failed, after) =
+            bind_and_publish_over(Some(live_claim(100, 9090)), "localhost", 9090).await;
+
+        assert!(failed, "a hostname is not a SocketAddr");
+        assert_eq!(after, None);
+    }
+
+    #[tokio::test]
+    async fn bind_failure_leaves_ready_record_untouched() {
+        let occupant = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let taken_port = occupant.local_addr().unwrap().port();
+        let ready = ready_state(777, taken_port, "live-tok", vec![5]);
+
+        let (_dir, failed, after) =
+            bind_and_publish_over(Some(ready.clone()), "127.0.0.1", taken_port).await;
+
+        assert!(failed);
+        assert_eq!(after, Some(ready));
+    }
+
+    #[tokio::test]
+    async fn bind_failure_leaves_claim_for_another_port_untouched() {
+        let occupant = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let taken_port = occupant.local_addr().unwrap().port();
+        let other_claim = live_claim(100, taken_port.wrapping_add(1));
+
+        let (_dir, failed, after) =
+            bind_and_publish_over(Some(other_claim.clone()), "127.0.0.1", taken_port).await;
+
+        assert!(failed);
+        assert_eq!(after, Some(other_claim));
     }
 }

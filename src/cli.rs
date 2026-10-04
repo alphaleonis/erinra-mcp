@@ -832,17 +832,16 @@ pub async fn run_daemon(
         );
     }
 
-    // Generate auth token and publish the Ready state early, before loading
-    // models. This avoids a race where `dash` reads the state file before the
-    // daemon finishes loading models and would get an empty token; the typed
-    // contract guarantees a published record always carries a real PID + token.
+    // Publish Ready before the slow model load so the spawner's `wait_for_ready`
+    // doesn't time out; connections made meanwhile queue in the listener backlog.
     let auth_token_str = web::auth::generate_auth_token();
     let our_pid = std::process::id();
     let daemon_pid = web::daemon::DaemonPid::new(our_pid)
         .ok_or_else(|| anyhow::anyhow!("daemon process has PID 0; cannot publish state"))?;
     let auth_token = web::daemon::AuthToken::new(auth_token_str.clone())
         .ok_or_else(|| anyhow::anyhow!("generated auth token was empty"))?;
-    web::daemon::publish_ready(data_dir, daemon_pid, port, auth_token)?;
+    let (listener, _) =
+        web::daemon::bind_and_publish(data_dir, bind, port, daemon_pid, auth_token).await?;
 
     // Load embedding model for search support.
     let model_cache_dir = data_dir.join("models");
@@ -867,10 +866,6 @@ pub async fn run_daemon(
 
     let reranker = load_reranker(&config.reranker, data_dir).await?;
 
-    let addr: std::net::SocketAddr = format!("{bind}:{port}")
-        .parse()
-        .with_context(|| format!("invalid bind address: {bind}:{port}"))?;
-
     let service = MemoryService::new(
         Arc::new(Mutex::new(db)),
         embedder,
@@ -881,7 +876,7 @@ pub async fn run_daemon(
     let opts = web::ServeOptions {
         open_browser: false,
     };
-    let server = web::serve(service, auth_token_str, addr, opts);
+    let server = web::serve(service, auth_token_str, listener, opts);
 
     let data_dir_owned = data_dir.to_path_buf();
 

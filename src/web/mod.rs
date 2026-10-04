@@ -4,8 +4,6 @@ pub mod auth;
 pub mod daemon;
 mod routes;
 
-use std::net::SocketAddr;
-
 use anyhow::Result;
 use axum::Router;
 #[cfg(debug_assertions)]
@@ -87,11 +85,11 @@ fn build_mcp_service(
     )
 }
 
-/// Start the web server and block until shutdown.
+/// Serve on a pre-bound listener and block until shutdown.
 pub async fn serve(
     service: MemoryService,
     auth_token: String,
-    addr: SocketAddr,
+    listener: tokio::net::TcpListener,
     opts: ServeOptions,
 ) -> Result<()> {
     // Save token ref before moving into AppState, for use in browser URL.
@@ -108,7 +106,6 @@ pub async fn serve(
 
     let app = app_router(state);
 
-    let listener = tokio::net::TcpListener::bind(addr).await?;
     let local_addr = listener.local_addr()?;
     eprintln!("Erinra dashboard: http://{local_addr}");
 
